@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-ui), system-ui, sans-serif;
+  --font-quran: var(--font-quran), serif;
+
+  --color-parchment: #efe7d6;
+  --color-card: #fffdf7;
+  --color-sand: #d9c89a;
+  --color-gold: #d4af37;
+  --color-gold-dark: #7c5a10;
+  --color-amber-brand: #b45309;
+  --color-ink: #1c1917;
+  --color-danger: #b91c1c;
+  --color-success: #047857;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-parchment text-ink antialiased;
+  }
+}
+
+@layer components {
+  .field-label {
+    @apply mb-1 block text-sm font-bold text-gold-dark;
+  }
+  .field-input {
+    @apply w-full rounded-xl border border-gold bg-white px-3 py-2.5 text-sm text-ink outline-none transition focus:border-amber-brand focus:ring-2 focus:ring-amber-brand/20;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-xl bg-amber-brand px-4 py-2.5 text-sm font-bold text-white transition hover:bg-amber-brand/90 disabled:opacity-60;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-xl border border-gold bg-white px-4 py-2.5 text-sm font-bold text-gold-dark transition hover:bg-parchment disabled:opacity-60;
+  }
+  .card {
+    @apply rounded-2xl border border-sand bg-card p-5 shadow-sm sm:p-6;
+  }
+}

@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#efe7d6">
+<title>مؤشّر أخطاء التلاوة</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root { --toolbar-h: 42px; }
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html { -webkit-text-size-adjust: 100%; overflow-x: hidden; overflow-y: auto; }
+  body { font-family: Amiri, 'Traditional Arabic', serif; }
+
+  /* Grows past the viewport and scrolls on computers; the padding keeps the
+     last line clear of the fixed toolbar when scrolled to the end. */
+  main {
+    min-height: 100dvh;
+    padding-bottom: calc(var(--toolbar-h) + env(safe-area-inset-bottom));
+  }
+
+  /* Full-width on phones, centered page with a maximum width on large screens.
+     No horizontal padding: the available width is used entirely by the text. */
+  #frame {
+    width: 100%;
+    max-width: 820px;
+    margin: 0 auto;
+    min-height: calc(100dvh - var(--toolbar-h) - env(safe-area-inset-bottom));
+    border-inline: 1px solid #d9c89a;
+  }
+  #inner {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100dvh - var(--toolbar-h) - env(safe-area-inset-bottom));
+  }
+  #lines {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  /* Keep the page number in its own reserved row so it can never overlap
+     the last Quran line when the viewport gets taller. */
+  #pageNumBox {
+    flex: 0 0 17px;
+    height: 17px;
+    font-size: 13px;
+    line-height: 17px;
+    text-align: center;
+    color: #b45309;
+    font-weight: 700;
+  }
+
+  .mline{
+    display: flex; flex-direction: row; align-items: center;
+    column-gap: .15em; justify-content: space-between;
+    line-height: 1.72; min-height: 1.72em; white-space: nowrap;
+  }
+  /* never squeeze a word glyph box: fitting is done via font-size only, so
+     natural widths stay measurable and scrollWidth reflects real overflow */
+  .mline > * { flex-shrink: 0; }
+  .mline.flush { justify-content: flex-start; }
+  .hrow{
+    display: flex; align-items: center; justify-content: center;
+    min-height: 1.9em; line-height: 1.5; text-align: center;
+  }
+  /* Hizb / rub' / sajda markers: fixed px size, never em/vw, never in the
+     line's width-fitting measurement (excluded via [data-fit="no"]). */
+  .mark{ flex-shrink: 0; line-height: 1; align-self: center; font-family: Amiri, serif; }
+  .mark-hizb { font-size: 20px; color: #b45309; }
+  .mark-rub  { font-size: 13px; color: #d97706; }
+  .mark-sajda{ font-size: 20px; color: #047857; }
+  .ayah{
+    flex-shrink: 0; pointer-events: none; display: inline-flex;
+    align-items: center; justify-content: center;
+    width: 1.55em; height: 1.55em; border: 1px solid #c9a227;
+    border-radius: 9999px; font-size: .55em; color: #92580a;
+    margin-inline-start: .3em; line-height: 1;
+  }
+  .qw{
+    font-family: var(--qcf), serif; cursor: pointer;
+    user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+    touch-action: manipulation; border-radius: 6px; padding: 0 .05em;
+    transition: color .15s ease, background-color .15s ease;
+  }
+  .qw.lm { font-family: Amiri, 'Traditional Arabic', serif; }
+  .qw.lm b { font-weight: 400; }
+  @media (hover: hover){   .qw:hover { background: #f7efdb; } }
+  .qw.anchor { background: #fde68a; box-shadow: 0 0 0 2px #d97706; }
+  .chip{
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 3.4rem; padding: .35rem .6rem; border-radius: 12px;
+    font-size: 2.5rem; line-height: 2; cursor: pointer; border: 1.5px solid #e7d9b0;
+    background: #fffdf7; transition: transform .1s, border-color .15s;
+    user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation;
+  }
+  .chip:active { transform: scale(.92); }
+  .modebtn{ transition: box-shadow .15s, border-color .15s; -webkit-tap-highlight-color: transparent; }
+  .modebtn.active{ border-color: currentColor; box-shadow: 0 0 0 2px #fffdf7, 0 0 0 4px currentColor; }
+  @media (max-width: 359px){ .modebtn { padding: .55rem .7rem; } }
+  input[type=number]{ -moz-appearance: textfield; }
+  input::-webkit-outer-spin-button, input::-webkit-inner-spin-button{ -webkit-appearance: none; margin: 0; }
+
+  /* Compact bottom toolbar: reserve only a small strip of screen space. */
+  #toolbar {
+    min-height: var(--toolbar-h);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  #toolbar .modebtn svg { width: 13px; height: 13px; }
+  #toolbar .modebtn.active { box-shadow: 0 0 0 1px #fffdf7, 0 0 0 2px currentColor; }
+  #toolbar button, #toolbar input { min-height: 26px; }
+
+  #dbg{ font-family: monospace; direction: ltr; text-align: left; white-space: pre-wrap; }
+</style>
+</head>
+<body class="bg-[#efe7d6]">
+
+  <!-- Mushaf page -->
+  <main>
+    <div id="frame">
+      <div id="inner">
+        <div id="lines"></div>
+        <div id="pageNumBox"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Top actions: back to dashboard, end & send the session -->
+  <div class="fixed top-2 inset-x-2 z-30 flex items-center justify-between gap-2 max-w-[820px] mx-auto pointer-events-none">
+    <a href="/" class="pointer-events-auto px-2 py-1 rounded-md bg-white/95 border border-[#d4af37] text-[#7c5a10] text-xs font-bold">رجوع</a>
+    <button id="sendBtn" type="button" class="pointer-events-auto px-2.5 py-1 rounded-md bg-[#b45309] text-white text-xs font-bold active:scale-95">إنهاء وإرسال الجلسة</button>
+  </div>
+
+  <!-- In-page message banner -->
+  <div id="banner" class="fixed top-14 inset-x-0 z-40 mx-auto max-w-[420px] px-4 pointer-events-none" hidden>
+    <div id="bannerText" class="rounded-xl bg-[#20342c] px-4 py-2.5 text-center text-xs font-bold text-white shadow-lg"></div>
+  </div>
+
+  <!-- Send-session dialog: asks for the reciter's code or email -->
+  <div id="sendDialog" class="fixed inset-0 z-50 bg-black/40 items-center justify-center p-4" hidden>
+    <div class="w-full max-w-sm rounded-2xl border-2 border-[#d4af37] bg-[#fffdf7] p-5 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="sendTitle">
+      <h2 id="sendTitle" class="text-sm font-bold text-[#7c5a10]">إنهاء وإرسال الجلسة</h2>
+      <p class="mt-1 text-xs text-[#7c5a10]">اكتب رمز القارئ (الظاهر في زر الملف الشخصي) أو بريده الإلكتروني.</p>
+      <input id="reciterInput" dir="ltr" type="text" autocomplete="off" class="mt-3 w-full rounded-xl border border-[#d4af37] bg-white px-3 py-2.5 text-sm text-left">
+      <p id="sendError" class="mt-2 min-h-[1rem] text-xs text-[#b91c1c]"></p>
+      <div class="mt-3 flex gap-2">
+        <button id="sendCancel" type="button" class="flex-1 rounded-xl border border-[#d4af37] bg-white px-3 py-2 text-xs font-bold text-[#7c5a10]">إلغاء</button>
+        <button id="sendConfirm" type="button" class="flex-1 rounded-xl bg-[#b45309] px-3 py-2 text-xs font-bold text-white">إرسال</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom toolbar -->
+  <nav id="toolbar" class="fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur border-t border-[#d9c89a]">
+    <div class="max-w-[820px] mx-auto px-2 py-1 flex items-center justify-between gap-1">
+
+      <!-- Right side: Page Navigation -->
+      <form id="navForm" class="flex items-center gap-1.5" autocomplete="off">
+        <button type="button" id="btnPrev" class="px-1.5 py-0.5 rounded-md bg-white border border-[#d4af37] text-[#7c5a10] text-xs font-bold leading-none active:scale-95 disabled:opacity-40" title="الصفحة السابقة">› السابقة</button>
+        <input id="pageInput" type="number" min="1" max="604" value="1"
+               class="w-10 text-center py-0.5 rounded-md bg-white border border-[#d4af37] text-xs font-bold leading-none">
+        <button type="button" id="btnNext" class="px-1.5 py-0.5 rounded-md bg-white border border-[#d4af37] text-[#7c5a10] text-xs font-bold leading-none active:scale-95 disabled:opacity-40" title="الصفحة التالية">التالية ‹</button>
+      </form>
+
+      <!-- Left side: Colors and Eraser (Icon Only) -->
+      <div class="flex items-center gap-1">
+        <button class="modebtn active p-[3px] rounded-lg bg-white border border-[#e7d9b0] text-[#7c5a10] active:scale-95" data-mode="red" title="تلوين">
+          <span class="block w-3 h-3 rounded-full bg-[#ef4444]"></span>
+        </button>
+        <button class="modebtn p-[3px] rounded-lg bg-white border border-[#e7d9b0] text-[#7c5a10] active:scale-95" data-mode="green" title="تنبيه">
+          <span class="block w-3 h-3 rounded-full bg-[#22c55e]"></span>
+        </button>
+        <button class="modebtn p-[3px] rounded-lg bg-white border border-[#e7d9b0] text-[#7c5a10] active:scale-95" data-mode="blue" title="تجويد/نطق">
+          <span class="block w-3 h-3 rounded-full bg-[#3b82f6]"></span>
+        </button>
+        <button class="modebtn px-1 py-[3px] rounded-lg bg-white border border-[#e7d9b0] text-[#7c5a10] active:scale-95" data-mode="range" title="تحديد نطاق: اضغط أول كلمة ثم آخر كلمة">
+          <span class="block text-[10px] font-bold leading-[13px]">نطاق</span>
+        </button>
+        <button class="modebtn p-[3px] rounded-lg bg-white border border-[#e7d9b0] text-[#7c5a10] active:scale-95" data-mode="erase" title="ممحاة">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7c5a10" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20H8.5l-5.2-5.2a1.5 1.5 0 0 1 0-2.1L13.6 2.4a1.5 1.5 0 0 1 2.1 0l5.9 5.9a1.5 1.5 0 0 1 0 2.1L13 19"/><path d="M8 11l5 5"/></svg>
+        </button>
+      </div>
+
+    </div>
+  </nav>
+
+  <!-- Loading / error overlay -->
+  <div id="overlay" class="fixed inset-0 z-40 bg-[#fffdf7]/70 backdrop-blur-sm flex-col items-center justify-center gap-4" style="display:none">
+    <div id="spin" class="w-10 h-10 rounded-full border-4 border-[#e7d9b0] border-t-[#b45309] animate-spin"></div>
+    <div id="ovmsg" class="text-[#7c5a10] font-bold">جارٍ تحميل الصفحة…</div>
+    <button id="retryBtn" class="px-5 py-2 rounded-xl bg-[#b45309] text-[#fffdf7] font-bold hidden">إعادة المحاولة</button>
+  </div>
+
+  <!-- Letter-level modal -->
+  <div id="modal" class="fixed inset-0 z-50 bg-black/40 items-center justify-center p-4" style="display:none">
+    <div class="bg-[#fffdf7] rounded-2xl border-2 border-[#d4af37] shadow-2xl max-w-md w-full p-4" role="dialog" aria-modal="true">
+      <div class="flex items-center justify-between mb-2">
+        <div id="modalLoc" class="text-[#7c5a10] text-sm font-bold"></div>
+        <button id="modalClose" class="w-8 h-8 rounded-full bg-white border border-[#d4af37] text-[#7c5a10] font-bold leading-none" title="إغلاق">✕</button>
+      </div>
+      <div id="modalWord" class="flex flex-wrap gap-2 justify-center py-3" dir="rtl"></div>
+      <div class="flex items-center justify-center gap-2 py-2 border-t border-[#efe3c2]">
+        <span class="text-xs text-[#7c5a10]">اللون:</span>
+        <button class="modebtn w-8 h-8 rounded-full border-2 border-[#e7d9b0]" data-mode="red" style="background:#ef4444" title="تلوين"></button>
+        <button class="modebtn w-8 h-8 rounded-full border-2 border-[#e7d9b0]" data-mode="green" style="background:#22c55e" title="تنبيه"></button>
+        <button class="modebtn w-8 h-8 rounded-full border-2 border-[#e7d9b0]" data-mode="blue" style="background:#3b82f6" title="تجويد/نطق"></button>
+        <button class="modebtn w-8 h-8 rounded-full bg-white border-2 border-[#e7d9b0] flex items-center justify-center" data-mode="erase" title="ممحاة">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7c5a10" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20H8.5l-5.2-5.2a1.5 1.5 0 0 1 0-2.1L13.6 2.4a1.5 1.5 0 0 1 2.1 0l5.9 5.9a1.5 1.5 0 0 1 0 2.1L13 19"/><path d="M8 11l5 5"/></svg>
+        </button>
+      </div>
+      <div class="text-center text-xs text-[#a08948] mt-1">اضغط على الحرف لتلوينه باللون المختار — اضغط مرة أخرى لإلغائه</div>
+    </div>
+  </div>
+
+  <div id="dbg" class="max-w-[820px] mx-auto px-4 pb-24 text-xs text-red-700" hidden></div>
+
+<script>
+'use strict';
+/* ============================= helpers ============================= */
+const $  = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const API = 'https://api.quran.com/api/v4';
+const FONT_BASE = 'https://verses.quran.foundation/fonts/quran/hafs/v2/woff2';
+const MODE_COLORS = { red:'#ef4444', green:'#22c55e', blue:'#3b82f6' };
+const AR_DIGITS = '٠١٢٣٤٥٦٧٨٩';
+const toAr = n => String(n).replace(/\d/g, d => AR_DIGITS[d]);
+const BASMALA = 'بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ';
+const LONG_PRESS_MS = 500;
+
+let STORE_KEY = 'gharas-mistakes-v1';   // localStorage: { [page]: { [location]: {w, l} } }; suffixed with the user id at boot
+const state = { page: 1, mode: 'red', tool: 'red', anchor: null, colors: new Map(), accepted: new Map(), chapters: null, basePx: 30, token: 0 };
+const fontCache = new Map();        // page -> {face, family}
+const wordItemsCache = new Map();   // location -> item (word object)
+const DEBUG = location.hash.includes('debug');
+
+/* ============================= fonts =============================== */
+async function ensureQcfFont(page) {
+  if (fontCache.has(page)) return fontCache.get(page).family;
+  const family = `QCFV2 P${page}`;
+  const face = new FontFace(family, `url(${FONT_BASE}/p${page}.woff2) format('woff2')`);
+  await face.load();                       // throws -> visible retry state
+  document.fonts.add(face);
+  fontCache.set(page, { face, family });
+  // LRU: keep at most 3 page fonts alive (no endless accumulation while paging)
+  while (fontCache.size > 3) {
+    const oldest = fontCache.keys().next().value;
+    if (oldest === page) break;
+    document.fonts.delete(fontCache.get(oldest).face);
+    fontCache.delete(oldest);
+  }
+  return family;
+}
+async function ensureAmiri() {
+  try { await document.fonts.load('400 20px Amiri', 'بسملة۩۞١٢٣'); } catch (e) { /* serif fallback */ }
+}
+
+/* ============================= data ================================ */
+async function fetchVerses(page, signal) {
+  const url = `${API}/verses/by_page/${page}?words=true&word_fields=code_v2,line_number,location,text_uthmani,char_type_name,v2_page`;
+  const r = await fetch(url, { signal });
+  if (!r.ok) throw new Error('API ' + r.status);
+  const j = await r.json();
+  if (!j.verses || !j.verses.length) throw new Error('empty page');
+  return j.verses;
+}
+async function fetchPrevLastVerse(page, signal) {   // metadata of last verse of previous page (hizb/rub' boundary continuity)
+  if (page <= 1) return null;
+  try {
+    const r = await fetch(`${API}/verses/by_page/${page - 1}`, { signal });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j.verses?.length ? j.verses[j.verses.length - 1] : null;
+  } catch (e) { return null; }
+}
+async function ensureChapters(signal) {
+  if (state.chapters) return state.chapters;
+  const r = await fetch(`${API}/chapters?language=ar`, { signal });
+  if (!r.ok) throw new Error('chapters ' + r.status);
+  const j = await r.json();
+  const map = new Map();
+  for (const c of j.chapters) map.set(c.id, c);
+  state.chapters = map;
+  return map;
+}
+
+/* ======================== model building =========================== */
+/* Line plan: array indexed by line number -> { kind:'words'|'header'|'basmala'|'gap',
+   items:[{word}], badges:[{n}], markers:['hizb'|'rub'|'sajda'], flush:bool, chapter } */
+function buildModel(verses, pageN, prevLast, chapters) {
+  const lines = new Map();
+  const L = n => { if (!lines.has(n)) lines.set(n, { kind:'words', items:[], markers:[], flush:false }); return lines.get(n); };
+
+  let prevEndLine = null, prevVerse = null;
+  for (const v of verses) {
+    // API quirk 1: drop words whose v2_page belongs to another page — their
+    // line_number describes the OTHER page's layout and corrupts grouping.
+    const words = v.words.filter(w => w.v2_page === pageN);
+    const wordItems = words.filter(w => w.char_type_name === 'word');
+    if (!wordItems.length) { prevVerse = v; continue; }
+    const startLine = wordItems[0].line_number;
+
+    // header / basmala rows inside line-number gaps (surah starts)
+    const newSurah = v.verse_number === 1;
+    if (newSurah) {
+      const gapStart = prevEndLine === null ? 1 : prevEndLine + 1;
+      const gapCount = startLine - gapStart;           // lines reserved before the surah
+      if (gapCount >= 1) {
+        L(gapStart).kind = 'header'; L(gapStart).chapter = v.chapter_id || parseInt(v.verse_key, 10);
+        if (gapCount >= 2 && (chapters.get(parseInt(v.verse_key,10))?.bismillah_pre !== false)) {
+          L(gapStart + 1).kind = 'basmala';
+        }
+      }
+    }
+
+    // markers from verse metadata
+    if (v.sajdah_number != null) {
+      L(startLine).markers.push('sajda');
+    } else {
+      const ref = prevVerse || prevLast;
+      if (ref && v.hizb_number !== ref.hizb_number)            L(startLine).markers.push('hizb');
+      else if (ref && v.rub_el_hizb_number !== ref.rub_el_hizb_number) L(startLine).markers.push('rub');
+    }
+
+    // words + ayah-end badges in DOCUMENT ORDER (API quirk 2: 'end' glyph never
+    // rendered — badge is built and interleaved right after its ayah's last word,
+    // so an ayah ending mid-line gets its badge mid-line, never at the line's end)
+    let lastWordLine = startLine;
+    for (const w of words) {
+      if (w.char_type_name === 'word') { L(w.line_number).items.push({ word: w }); lastWordLine = w.line_number; }
+      else if (w.char_type_name === 'end') L(lastWordLine).items.push({ badge: { n: v.verse_number, key: v.verse_key } });
+    }
+    prevEndLine = lastWordLine;
+    prevVerse = v;
+  }
+
+  // flush (right-aligned, not stretched) lines: last line before a header row,
+  // or the page's last line when it ends the surah, or lines with too few items to stretch.
+  const sorted = [...lines.keys()].sort((a, b) => a - b);
+  sorted.forEach((n, i) => {
+    const cur = lines.get(n), next = lines.get(sorted[i + 1]);
+    const nextIsBreak = !next || next.kind === 'header' || next.kind === 'basmala';
+    if (cur.kind !== 'words') return;
+    const isLast = i === sorted.length - 1;
+    const lastVerse = verses[verses.length - 1];
+    const ch = chapters.get(parseInt(lastVerse.verse_key, 10));
+    const surahEndsHere = isLast && ch && lastVerse.verse_number === ch.verses_count;
+    if (nextIsBreak || surahEndsHere || cur.items.length <= 2) cur.flush = true;
+  });
+  return lines;
+}
+
+/* =========================== rendering ============================= */
+function clusterize(text) {  // base letter + its combining marks stay together
+  const out = [];
+  for (const ch of text) {
+    if (out.length && /\p{M}|\u200D/u.test(ch)) out[out.length - 1] += ch;
+    else out.push(ch);
+  }
+  return out;
+}
+function wordColorState(loc) { return state.colors.get(loc) || null; }
+/* what is shown: own marks on top of the read-only accepted marks (own wins where both exist) */
+function effectiveColors(loc) {
+  const own = state.colors.get(loc) || null;
+  const acc = state.accepted.get(loc) || null;
+  if (!acc) return own;
+  return {
+    w: (own && own.w) || acc.w || null,
+    l: { ...(acc.l || {}), ...((own && own.l) || {}) },
+  };
+}
+function hasLetterMarks(cs) { return !!(cs && cs.l && Object.keys(cs.l).length); }
+
+/* TRADEOFF (deliberate, per spec): QCF code_v2 glyphs are page-specific ligatures with
+   no reliable way to color a sub-region while preserving exact Mushaf shaping. A word
+   with no letter-level marks renders the real code_v2 glyph (pixel-accurate shape).
+   Once any letter of the word carries a letter-level color, that word switches to
+   rendering text_uthmani via Amiri, cluster by cluster, each independently colorable. */
+function renderWordGlyph(span, item) {
+  const cs = effectiveColors(item.word.location);
+  const anc = state.anchor === item.word.location ? ' anchor' : '';
+  if (hasLetterMarks(cs)) {
+    span.className = 'qw lm' + anc;
+    span.textContent = '';
+    clusterize(item.word.text_uthmani).forEach((cl, i) => {
+      const b = document.createElement('b');
+      b.textContent = cl;
+      b.style.color = (cs.l && cs.l[i]) || cs.w || '';
+      span.appendChild(b);
+    });
+    span.style.color = (cs && cs.w) || '';
+  } else {
+    span.className = 'qw' + anc;
+    span.textContent = item.word.code_v2;
+    span.style.color = (cs && cs.w) || '';
+  }
+}
+
+function renderPage(model, qcfFamily) {
+  const linesEl = $('#lines');
+  linesEl.textContent = '';
+  linesEl.style.setProperty('--qcf', `'${qcfFamily}'`);
+  const frag = document.createDocumentFragment();
+  const keys = [...model.keys()];
+  const maxKey = Math.max(...keys), minKey = Math.min(...keys);
+  const empty = { kind:'words', items:[], markers:[], flush:false };
+  for (let n = minKey; n <= maxKey; n++) {           // continuous range: keeps empty gap lines' rhythm
+    const line = model.get(n) || empty;
+    if (line.kind === 'header') {
+      const name = state.chapters.get(line.chapter)?.name_arabic || '';
+      const row = document.createElement('div');
+      row.className = 'hrow';
+      row.innerHTML = `<span style="color:#7c5a10;font-weight:700">﴿ سُورَةُ ${name} ﴾</span>`;
+      frag.appendChild(row);
+      continue;
+    }
+    if (line.kind === 'basmala') {
+      const row = document.createElement('div');
+      row.className = 'hrow';
+      row.innerHTML = `<span style="color:#1c1917">${BASMALA}</span>`;
+      frag.appendChild(row);
+      continue;
+    }
+    const row = document.createElement('div');
+    row.className = 'mline' + (line.flush ? ' flush' : '');
+    row.dataset.line = n;
+
+    // markers FIRST in the flex row (visual start / right edge in RTL),
+    // fixed px size, flex-shrink:0, and data-fit="no" so they are excluded
+    // from the line's width-fitting measurement entirely.
+    for (const m of line.markers) {
+      const s = document.createElement('span');
+      s.className = `mark mark-${m}`;
+      s.dataset.fit = 'no';
+      s.textContent = m === 'sajda' ? '۩' : m === 'hizb' ? '۞' : '';
+      s.title = m === 'sajda' ? 'موضع سجدة' : m === 'hizb' ? 'بداية الحزب' : 'بداية الربع';
+      row.appendChild(s);
+    }
+    for (const item of line.items) {
+      if (item.word) {
+        const span = document.createElement('span');
+        span.dataset.loc = item.word.location;
+        renderWordGlyph(span, item);
+        row.appendChild(span);
+      } else {   // ayah-end badge: inline right after its ayah's last word (document order), not at line end
+        const badge = document.createElement('span');
+        badge.className = 'ayah';
+        badge.textContent = toAr(item.badge.n);
+        badge.title = item.badge.key;
+        row.appendChild(badge);
+      }
+    }
+    frag.appendChild(row);
+  }
+  linesEl.appendChild(frag);
+  $('#pageNumBox').textContent = toAr(state.page);
+}
+
+/* ==================== responsive per-line fitting ===================
+   Width-fit uses ONLY real text items (word glyphs + ayah badges, which are
+   genuinely part of the text line). Fixed markers' width is subtracted from
+   the available width, so a marker can never trigger or influence the
+   font-size shrink of its own or any other line. */
+function computeBase() {
+  const w = $('#lines').clientWidth || 320;
+  state.basePx = Math.round(Math.min(42, Math.max(17, w * 0.075)));
+  $('#lines').style.fontSize = state.basePx + 'px';   // header/basmala rows scale with it
+}
+function measureRow(row) {   // width of text items only; fixed markers -> "fixed", subtracted from available width
+  // ceil each item: layout rounds flex boxes up to whole pixels while rects are
+  // fractional; margins are NOT part of rect.width but do consume flex space
+  const kids = [...row.children];
+  const cs = getComputedStyle(row);
+  const gap = Math.ceil(parseFloat(cs.columnGap) || 0);
+  let nat = 0, fixed = 0, nF = 0, nN = 0;
+  for (const k of kids) {
+    const kcs = getComputedStyle(k);
+    const m = Math.ceil((parseFloat(kcs.marginLeft) || 0) + (parseFloat(kcs.marginRight) || 0));
+    const w = Math.ceil(k.getBoundingClientRect().width) + m;
+    if (k.dataset.fit === 'no') { fixed += w; nN++; }
+    else { nat += w; nF++; }
+  }
+  nat += Math.max(0, nF - 1) * gap;
+  fixed += nN * gap;
+  return { nat, fixed };
+}
+function rowOverflowPx(row) {   // TRUE fractional overflow (scrollWidth rounds up and false-positives)
+  const rowRight = row.getBoundingClientRect().right;
+  let maxRight = 0, minLeft = Infinity;
+  for (const k of row.children) {
+    const r = k.getBoundingClientRect();
+    if (r.width === 0) continue;
+    maxRight = Math.max(maxRight, r.right);
+    minLeft = Math.min(minLeft, r.left);
+  }
+  const rowRect = row.getBoundingClientRect();
+  return Math.max(0, maxRight - rowRight, rowRect.left - minLeft);
+}
+function fitLines() {
+  computeBase();
+  const base = state.basePx;
+  const SLACK = 2;   // absorbs clientWidth/scrollWidth integer rounding residue
+  for (const row of $$('#lines .mline')) {
+    row.style.fontSize = base + 'px';
+    const m0 = measureRow(row);
+    const avail0 = row.clientWidth - m0.fixed - SLACK;
+    let f = (m0.nat > avail0 && m0.nat > 0) ? Math.max(11, base * (avail0 / m0.nat) * 0.985) : base;
+    // font hinting rounds glyph advances to integers, so pure linear scaling can be
+    // a few px short: verify with a real measurement and correct (still measuring
+    // text items only; markers stay excluded via m.fixed).
+    let it = 0;
+    while (it++ < 6) {
+      row.style.fontSize = f.toFixed(2) + 'px';
+      const m = measureRow(row);
+      const avail = row.clientWidth - m.fixed - SLACK;
+      if (m.nat <= avail) break;
+      f = Math.max(11, f * (avail / m.nat) * 0.97);
+    }
+    row.style.fontSize = f.toFixed(2) + 'px';
+    // final guard: trust REAL layout. Async font/style application can shift
+    // metrics a pixel or two after the estimate above; shrink any row that
+    // still truly overflows. delta = actual overflow of text (markers are
+    // excluded from nat and their capacity use already subtracted via fixed,
+    // so the marker's width never participates in this calculation).
+    let guard = 0;
+    while (rowOverflowPx(row) > 0.5 && guard++ < 10) {
+      const m = measureRow(row);
+      const avail = row.clientWidth - m.fixed - SLACK;
+      const ov = rowOverflowPx(row);
+      const natTrue = m.nat + ov;
+      f = Math.max(11, f * (avail / natTrue) * 0.98);
+      row.style.fontSize = f.toFixed(2) + 'px';
+    }
+  }
+}
+
+/* ========================= interactions ============================ */
+function setMode(m) {
+  state.mode = m;
+  if (m !== 'range') state.tool = m;   // range applies the last chosen color/eraser
+  clearAnchor();
+  $$('.modebtn').forEach(b => b.classList.toggle('active', b.dataset.mode === m));
+}
+
+/* ======================= local storage ============================= */
+function readStore() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch (e) { return {}; }
+}
+function loadColorsFor(page) {
+  return new Map(Object.entries(readStore()[page] || {}));
+}
+function persistColors() {
+  const all = readStore();
+  const pageData = {};
+  for (const [loc, cs] of state.colors) {
+    const hasL = cs.l && Object.keys(cs.l).length > 0;
+    if (cs.w || hasL) pageData[loc] = { w: cs.w || null, l: cs.l || {} };
+  }
+  if (Object.keys(pageData).length) all[state.page] = pageData;
+  else delete all[state.page];
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(all)); } catch (e) { /* storage full / disabled */ }
+}
+function clearAnchor() {
+  state.anchor = null;
+  $$('#lines .qw.anchor').forEach(e => e.classList.remove('anchor'));
+}
+/* range: first tap sets anchor, second tap colors (or erases) every word between them */
+function applyRange(qw) {
+  const loc = qw.dataset.loc;
+  if (!state.anchor) { state.anchor = loc; qw.classList.add('anchor'); return; }
+  const els = $$('#lines .qw');
+  const a = els.findIndex(e => e.dataset.loc === state.anchor);
+  const b = els.indexOf(qw);
+  clearAnchor();
+  if (a < 0 || b < 0 || a === b) return;
+  const [lo, hi] = a < b ? [a, b] : [b, a];
+  for (let i = lo; i <= hi; i++) {
+    const el = els[i], l = el.dataset.loc, item = wordItemsCache.get(l);
+    if (state.accepted.has(l)) continue;   // accepted marks are read-only
+    if (state.tool === 'erase') state.colors.delete(l);
+    else {
+      const cs = state.colors.get(l) || { w: null, l: {} };
+      cs.w = MODE_COLORS[state.tool];
+      state.colors.set(l, cs);
+    }
+    if (item) renderWordGlyph(el, item);
+  }
+  persistColors();
+}
+document.addEventListener('click', e => {
+  const btn = e.target.closest('.modebtn');
+  if (btn) setMode(btn.dataset.mode);
+});
+
+/* quick tap = whole word; long press (>=500ms) = letter modal. pointercancel /
+   pointerleave / move clear the timer so scroll gestures never leave stuck state. */
+let press = null;
+const linesEl = $('#lines');
+linesEl.addEventListener('contextmenu', e => { if (e.target.closest('.qw')) e.preventDefault(); });
+linesEl.addEventListener('pointerdown', e => {
+  if (e.button !== 0 && e.pointerType === 'mouse') return;
+  const qw = e.target.closest('.qw');
+  if (!qw) return;
+  press = {
+    qw, x: e.clientX, y: e.clientY, long: false,
+    t: setTimeout(() => {
+      press.long = true;
+      if (navigator.vibrate) navigator.vibrate(10);
+      openModal(qw);
+    }, LONG_PRESS_MS)
+  };
+});
+linesEl.addEventListener('pointermove', e => {
+  if (!press) return;
+  if (Math.abs(e.clientX - press.x) > 12 || Math.abs(e.clientY - press.y) > 12) cancelPress();
+});
+const cancelPress = () => { if (press) { clearTimeout(press.t); press = null; } };
+linesEl.addEventListener('pointerup', () => {
+  if (!press) return;
+  const { qw, long, t } = press;
+  clearTimeout(t); press = null;
+  if (!long) applyWordMode(qw);
+});
+linesEl.addEventListener('pointercancel', cancelPress);
+linesEl.addEventListener('pointerleave', cancelPress);
+
+function applyWordMode(qw) {
+  if (state.mode === 'range') return applyRange(qw);
+  const loc = qw.dataset.loc;
+  if (state.accepted.has(loc)) return;   // accepted marks are read-only
+  if (state.tool === 'erase') state.colors.delete(loc);
+  else {
+    const cs = state.colors.get(loc) || { w: null, l: {} };
+    cs.w = (cs.w === MODE_COLORS[state.tool]) ? null : MODE_COLORS[state.tool];
+    state.colors.set(loc, cs);
+  }
+  const item = wordItemsCache.get(loc);
+  if (item) renderWordGlyph(qw, item);
+  persistColors();
+}
+
+/* ============================ modal ================================ */
+let modalLoc = null;
+function openModal(qw) {
+  const loc = qw.dataset.loc;
+  const item = wordItemsCache.get(loc);
+  if (!item) return;
+  modalLoc = loc;
+  $('#modalLoc').textContent = '﴿' + item.word.location.replace(/:\d+$/, '') + '﴾ — ' + item.word.location;
+  buildModalWord();
+  $('#modal').style.display = 'flex';
+  $('#modalClose').focus();
+}
+function buildModalWord() {
+  const item = wordItemsCache.get(modalLoc);
+  const cs = effectiveColors(modalLoc) || { w: null, l: {} };
+  const box = $('#modalWord');
+  box.textContent = '';
+  clusterize(item.word.text_uthmani).forEach((cl, i) => {
+    const chip = document.createElement('button');
+    chip.className = 'chip';
+    chip.textContent = cl;
+    chip.style.color = (cs.l && cs.l[i]) || cs.w || '';
+    chip.addEventListener('click', () => {
+      if (state.accepted.get(modalLoc)?.l?.[i]) return;   // accepted letter is read-only
+      const st = state.colors.get(modalLoc) || { w: null, l: {} };
+      if (state.tool === 'erase') delete st.l[i];
+      else st.l[i] = st.l[i] === MODE_COLORS[state.tool] ? undefined : MODE_COLORS[state.tool];
+      if (st.l[i] === undefined) delete st.l[i];
+      state.colors.set(modalLoc, st);
+      persistColors();
+      chip.style.color = (st.l && st.l[i]) || st.w || '';
+      const qwEl = linesEl.querySelector(`.qw[data-loc="${CSS.escape(modalLoc)}"]`);
+      if (qwEl) renderWordGlyph(qwEl, item);
+    });
+    box.appendChild(chip);
+  });
+}
+function closeModal() { $('#modal').style.display = 'none'; modalLoc = null; }
+$('#modalClose').addEventListener('click', closeModal);
+$('#modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModal();
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key === 'ArrowRight') gotoPage(state.page - 1);   // RTL: right = previous
+  if (e.key === 'ArrowLeft')  gotoPage(state.page + 1);
+});
+
+/* ========================= navigation ============================== */
+function showOverlay(msg, retry) {
+  $('#overlay').style.display = 'flex';
+  $('#spin').classList.toggle('hidden', retry);
+  $('#ovmsg').textContent = msg;
+  $('#retryBtn').classList.toggle('hidden', !retry);
+}
+function hideOverlay() { $('#overlay').style.display = 'none'; }
+$('#retryBtn').addEventListener('click', () => loadPage(state.page));
+
+let abortCtl = null;
+async function loadPage(n) {
+  n = Math.min(604, Math.max(1, Math.round(n) || 1));
+  const token = ++state.token;
+  if (abortCtl) abortCtl.abort();
+  abortCtl = new AbortController();
+  const signal = abortCtl.signal;
+  showOverlay('جارٍ تحميل الصفحة…', false);
+  try {
+    const [verses, family, chapters, prevLast] = await Promise.all([
+      fetchVerses(n, signal),
+      ensureQcfFont(n),
+      ensureChapters(signal),
+      ensureAmiri(),
+      fetchPrevLastVerse(n, signal),
+    ]);
+    if (token !== state.token) return;
+
+    state.page = n;
+    state.colors = loadColorsFor(n);   // restore this page's saved mistakes
+    state.anchor = null;
+    wordItemsCache.clear();
+
+    const model = buildModel(verses, n, prevLast, chapters);
+    for (const line of model.values())
+      for (const item of line.items) if (item.word) wordItemsCache.set(item.word.location, item);
+
+    renderPage(model, family);
+    fitLines();
+    hideOverlay();
+    updateNav();
+    location.hash = `p${n}` + (DEBUG ? 'debug' : '');
+    // async font/style application can shift metrics a pixel or two after fit;
+    // re-fit once everything has truly settled (token-guarded, idempotent)
+    const resettle = () => { if (token === state.token) fitLines(); };
+    if (document.fonts?.ready) document.fonts.ready.then(resettle);
+    setTimeout(resettle, 400);
+    if (DEBUG) runSelfCheck();
+  } catch (err) {
+    if (token !== state.token || err.name === 'AbortError') return;
+    console.error(err);
+    showOverlay('تعذّر تحميل الصفحة أو خط المصحف. تحقّق من الاتصال ثم أعد المحاولة.', true);
+  }
+}
+function gotoPage(n) { if (n >= 1 && n <= 604 && n !== state.page) loadPage(n); }
+function updateNav() {
+  $('#pageInput').value = state.page;
+  $('#btnPrev').disabled = state.page <= 1;
+  $('#btnNext').disabled = state.page >= 604;
+}
+$('#btnPrev').addEventListener('click', () => gotoPage(state.page - 1));
+$('#btnNext').addEventListener('click', () => gotoPage(state.page + 1));
+$('#navForm').addEventListener('submit', e => { e.preventDefault(); gotoPage(parseInt($('#pageInput').value, 10)); });
+window.addEventListener('hashchange', () => {
+  const m = location.hash.match(/p(\d+)/);
+  if (m) { const p = parseInt(m[1], 10); if (p !== state.page) loadPage(p); }
+});
+
+/* resize: re-derive base font and re-fit every line from live measurements */
+let resizeRaf = 0;
+new ResizeObserver(() => {
+  cancelAnimationFrame(resizeRaf);
+  resizeRaf = requestAnimationFrame(() => { if ($('#lines').children.length) fitLines(); });
+}).observe($('#lines'));
+
+/* ========================= debug self-check ======================== */
+function runSelfCheck() {
+  const rows = $$('#lines .mline');
+  const rep = rows.map(r => { const m = measureRow(r); return `L${r.dataset.line} f=${parseFloat(r.style.fontSize).toFixed(1)} ov=${rowOverflowPx(r).toFixed(1)} n=${r.children.length} nat=${m.nat.toFixed(1)} fix=${m.fixed.toFixed(1)} cw=${r.clientWidth} sw=${r.scrollWidth}`; }).join(' | ');
+  const marks = { hizb: $$('.mark-hizb').length, rub: $$('.mark-rub').length, sajda: $$('.mark-sajda').length };
+  const maxOv = rows.reduce((m, r) => Math.max(m, rowOverflowPx(r)), 0);
+  const dbg = $('#dbg');
+  dbg.hidden = false;
+  dbg.textContent = `SELFCHECK page=${state.page} vw=${innerWidth} w=${$('#lines').clientWidth} maxOv=${maxOv.toFixed(2)} marks=${JSON.stringify(marks)} rows=${rows.length}\n${rep}`;
+  document.title = maxOv <= 0.5 ? `READY maxOv=0` : `READY OVERFLOW=${maxOv.toFixed(1)}`;
+}
+if (DEBUG) {
+  window.addEventListener('error', e => { $('#dbg').hidden = false; $('#dbg').textContent += `\nRUNTIME_ERROR: ${e.message}`; });
+  window.addEventListener('unhandledrejection', e => { $('#dbg').hidden = false; $('#dbg').textContent += `\nRUNTIME_ERROR: ${e.reason}`; });
+}
+
+/* ============================= boot ================================ */
+/* in-page messages (replace the browser's alert) */
+let bannerTimer = null;
+function showBanner(text, ms = 3000) {
+  $('#bannerText').textContent = text;
+  $('#banner').hidden = false;
+  clearTimeout(bannerTimer);
+  bannerTimer = setTimeout(() => { $('#banner').hidden = true; }, ms);
+}
+
+/* send the session: the dialog asks for the reciter, then posts the marks */
+const sendDialog = $('#sendDialog');
+function closeSendDialog() { sendDialog.style.display = 'none'; $('#sendError').textContent = ''; }
+$('#sendBtn').addEventListener('click', () => {
+  const store = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
+  if (!Object.keys(store).length) { showBanner('لا توجد علامات لإرسالها.'); return; }
+  $('#reciterInput').value = '';
+  sendDialog.style.display = 'flex';
+  $('#reciterInput').focus();
+});
+$('#sendCancel').addEventListener('click', closeSendDialog);
+sendDialog.addEventListener('click', (e) => { if (e.target === sendDialog) closeSendDialog(); });
+$('#reciterInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#sendConfirm').click(); });
+
+$('#sendConfirm').addEventListener('click', async () => {
+  const reciter = $('#reciterInput').value.trim();
+  if (!reciter) { $('#sendError').textContent = 'أدخل رمز القارئ أو بريده الإلكتروني.'; return; }
+  const store = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
+  $('#sendConfirm').disabled = true;
+  try {
+    const r = await fetch('/api/sessions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reciter, store }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) { $('#sendError').textContent = data.error || 'تعذّر إرسال الجلسة.'; return; }
+    localStorage.removeItem(STORE_KEY);
+    state.colors = new Map();
+    closeSendDialog();
+    loadPage(state.page);
+    showBanner(data.status === 'approved'
+      ? 'تم إرسال الجلسة واعتمادها تلقائيًا.'
+      : 'تم إرسال الجلسة. بانتظار موافقة القارئ.', 4000);
+  } catch (_) {
+    $('#sendError').textContent = 'تعذّر الاتصال بالخادم.';
+  } finally {
+    $('#sendConfirm').disabled = false;
+  }
+});
+
+/* boot: the Mushaf needs a logged-in user; marks are stored per user */
+(async function boot() {
+  const r = await fetch('/api/me');
+  if (!r.ok) { location.replace('/'); return; }
+  const me = await r.json();
+  STORE_KEY = `gharas-mistakes-v1:${me.id}`;
+  const acc = await fetch('/api/marks/accepted');   // marks the listener had accepted for this reciter
+  if (acc.ok) state.accepted = new Map(Object.entries(await acc.json()));
+  const m = location.hash.match(/p(\d+)/);
+  const fw = location.hash.match(/-w(\d+)/);   // debug: force frame width (headless min viewport workaround)
+  if (fw) { $('#frame').style.width = Math.min(780, Math.max(280, +fw[1])) + 'px'; }
+  loadPage(m ? parseInt(m[1], 10) : 1);
+})();
+</script>
+</body>
+</html>
