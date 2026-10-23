@@ -25,6 +25,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <Link href="/home" className="text-ink/80 hover:text-amber-brand">{ar.nav.home}</Link>
             <Link href="/mushaf/1" className="text-ink/80 hover:text-amber-brand">{ar.nav.mushaf}</Link>
             <Link href="/sessions" className="text-ink/80 hover:text-amber-brand">{ar.nav.sessions}</Link>
+            <Link href="/chat" className="text-ink/80 hover:text-amber-brand">{ar.nav.chat}</Link>
             {isCommittee && (
               <Link href="/committee" className="text-ink/80 hover:text-amber-brand">{ar.nav.committee}</Link>
             )}

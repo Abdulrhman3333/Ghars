@@ -13,3 +13,12 @@ export function toAsciiDigits(value: string): string {
 export function formatArabicDate(iso: string): string {
   return new Intl.DateTimeFormat('ar', { dateStyle: 'long' }).format(new Date(iso));
 }
+
+/** 12-hour clock only, e.g. "٣:٤٥ م" — shown beside the date in the sessions list. */
+export function formatArabicTime12(iso: string): string {
+  return new Intl.DateTimeFormat('ar', { hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(iso));
+}
+
+export function formatArabicTime(iso: string): string {
+  return new Intl.DateTimeFormat('ar', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso));
+}

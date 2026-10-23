@@ -7,7 +7,7 @@ import { FormMessage } from '@/components/form-feedback';
 import { toArabicDigits } from '@/lib/utils';
 import type { ActionState } from '@/types';
 
-export type AutoAcceptItem = { id: string; name: string; code: string };
+export type AutoAcceptItem = { id: string; code: string };
 
 const initial: ActionState = {};
 
@@ -49,12 +49,9 @@ export function AutoAcceptSection({ items }: { items: AutoAcceptItem[] }) {
         <ul className="divide-y divide-sand rounded-xl border border-sand bg-white">
           {items.map((item) => (
             <li key={item.id} className="flex items-center justify-between gap-3 px-4 py-3">
-              <div>
-                <p className="font-bold text-ink">{item.name}</p>
-                <p className="font-mono text-xs text-ink/60" dir="ltr">
-                  {toArabicDigits(item.code)}
-                </p>
-              </div>
+              <p className="font-mono text-lg font-bold text-ink" dir="ltr">
+                {toArabicDigits(item.code)}
+              </p>
               <button
                 type="button"
                 disabled={isRemoving}

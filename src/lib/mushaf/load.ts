@@ -1,5 +1,6 @@
 import 'server-only';
-import { createClient } from '@/lib/supabase/server';
+import { unstable_cache } from 'next/cache';
+import { createStaticClient } from '@/lib/supabase/static';
 import type { ChapterMeta, PageInput, PageWord, VerseMeta } from './model';
 
 export type ErrorType = { id: number; code: string; name_ar: string; color_hex: string };
@@ -15,8 +16,13 @@ export type LoadedPage = {
 
 const WORD_COLUMNS = 'location, verse_key, page, line_number, word_position, code_v2, text_uthmani';
 
-export async function loadMushafPage(page: number): Promise<LoadedPage | null> {
-  const supabase = await createClient();
+/**
+ * Every Mushaf query here reads STATIC data (the Quran snapshot + error taxonomy), so the whole
+ * loader is wrapped in unstable_cache: after the first request for a page, zero remote queries
+ * are made until (re)validation. This was the main page-to-page lag source.
+ */
+async function fetchMushafPage(page: number): Promise<LoadedPage | null> {
+  const supabase = createStaticClient();
 
   const { data: rawWords, error: wordsError } = await supabase
     .from('quran_words')
@@ -95,4 +101,13 @@ export async function loadMushafPage(page: number): Promise<LoadedPage | null> {
     types: (typeRes.data ?? []) as ErrorType[],
     subtypes: (subtypeRes.data ?? []) as ErrorSubtype[],
   };
+}
+
+const cached = unstable_cache(fetchMushafPage, ['mushaf-page'], {
+  // revalidated daily: the Quran snapshot never changes; taxonomy changes appear within a day
+  revalidate: 86_400,
+});
+
+export function loadMushafPage(page: number): Promise<LoadedPage | null> {
+  return cached(page);
 }

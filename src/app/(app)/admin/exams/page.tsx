@@ -15,7 +15,7 @@ export default async function AdminExamsPage() {
 
   const ids = [...new Set((exams ?? []).flatMap((e) => [e.student_id, e.nominated_by, e.examiner_id]).filter(Boolean))] as string[];
   const { data: people } = ids.length
-    ? await supabase.from('users').select('id, name').in('id', ids)
+    ? await supabase.from('v_users_admin').select('id, name').in('id', ids)
     : { data: [] as { id: string; name: string }[] };
   const nameOf = new Map((people ?? []).map((p) => [p.id, p.name]));
 

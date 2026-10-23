@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import ar from '@/messages/ar.json';
 import { getCurrentProfile } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
@@ -21,7 +22,7 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
 
   const { data: student } = await supabase
     .from('users')
-    .select('name, user_code')
+    .select('id, user_code')
     .eq('id', id)
     .single();
   if (!student) notFound();
@@ -36,8 +37,12 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
   return (
     <div className="space-y-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-bold text-gold-dark">{student.name}</h1>
-        <p className="font-mono text-xs text-ink/60" dir="ltr">{toArabicDigits(student.user_code)}</p>
+        <h1 className="text-2xl font-bold text-gold-dark" dir="ltr">
+          {toArabicDigits(student.user_code)}
+        </h1>
+        <Link href={`/chat/${student.id}`} className="text-sm font-bold text-amber-brand hover:underline">
+          {ar.chat.openShort}
+        </Link>
       </header>
 
       <section className="card space-y-3">

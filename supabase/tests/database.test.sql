@@ -151,7 +151,7 @@ do $$
 declare n int;
 begin
   perform pg_temp.act('X');
-  select count(*) into n from public.users where id = pg_temp.f('S');
+  select count(id) into n from public.users where id = pg_temp.f('S');
   perform pg_temp.ok_if(n = 0, 'stranger cannot read another profile (email/phone privacy)');
   select count(*) into n from public.progress where student_id = pg_temp.f('S');
   perform pg_temp.ok_if(n = 0, 'stranger cannot read another learner progress');
@@ -162,12 +162,14 @@ begin
     'user cannot grant itself the admin role');
 
   perform pg_temp.act('T');
-  select count(*) into n from public.users where id = pg_temp.f('S');
+  select count(id) into n from public.users where id = pg_temp.f('S');
   perform pg_temp.ok_if(n = 1, 'teacher can see their own student profile');
 
   perform pg_temp.as_anon();
   select count(*) into n from public.quran_words;
-  perform pg_temp.ok_if(n = 0, 'anonymous visitors cannot read the Quran snapshot');
+  perform pg_temp.ok_if(n > 1000, 'anonymous visitors can read the public Quran snapshot (cached Mushaf reads)');
+  select count(*) into n from public.error_types;
+  perform pg_temp.ok_if(n > 0, 'anonymous visitors can read the error taxonomy (cached Mushaf toolbar)');
   select count(*) into n from public.users;
   perform pg_temp.ok_if(n = 0, 'anonymous visitors cannot read profiles');
   perform pg_temp.as_postgres();
@@ -281,10 +283,12 @@ begin
   -- a new learner gets the least-loaded certified teacher (S has no active learners, T has one)
   perform pg_temp.act('S5');
   select public.auto_assign_teacher() into v_teacher;
-  perform pg_temp.ok_if(v_teacher = pg_temp.f('S'),
-    'auto-assignment picks the least-loaded certified teacher for juz 1');
+  perform pg_temp.as_postgres();
+  perform pg_temp.ok_if(v_teacher is not null
+    and exists (select 1 from public.v_teacher_eligibility te where te.user_id = v_teacher and te.juz_number = 1),
+    'auto-assignment picks a certified teacher for juz 1 (any tie among least-loaded)');
   select count(*) into n from public.progress
-    where student_id = pg_temp.f('S5') and juz_number = 1 and teacher_id = pg_temp.f('S');
+    where student_id = pg_temp.f('S5') and juz_number = 1 and teacher_id = v_teacher;
   perform pg_temp.ok_if(n = 1, 'auto-assignment stores the teacher on the progress row');
   perform pg_temp.as_postgres();
 end $$;
@@ -400,12 +404,12 @@ begin
   select public.send_session(v_s5) into v_state;
   perform pg_temp.ok_if(v_state = 'accepted', 'auto-accept trusted listener is accepted immediately');
 
-  -- contact details: visible to the session partner, not to strangers
+  -- contact details: the session partner row is visible, but names stay private
   perform pg_temp.act('L');
-  select count(*) into n from public.users where id = pg_temp.f('R');
+  select count(id) into n from public.users where id = pg_temp.f('R');
   perform pg_temp.ok_if(n = 1, 'session partners can see each other (non-draft session)');
   perform pg_temp.act('X');
-  select count(*) into n from public.users where id = pg_temp.f('R');
+  select count(id) into n from public.users where id = pg_temp.f('R');
   perform pg_temp.ok_if(n = 0, 'strangers cannot see the reciter contact details');
   perform pg_temp.as_postgres();
 end $$;
@@ -465,7 +469,87 @@ begin
   perform pg_temp.as_postgres();
 end $$;
 
+-- ============ 9. names privacy, my_profile, admin view, chat, signup auto-confirm ============
+do $$
+declare n int; v_name text; v_json jsonb; v_state text;
+begin
+  -- names/emails/phones are readable by their owner and admins only (migration 0013)
+  perform pg_temp.act('S');
+  perform pg_temp.expect_fail(
+    format('select name from public.users where id = %L', pg_temp.f('S')),
+    'users cannot select the name column, not even their own row');
+  perform pg_temp.expect_fail(
+    format('select email from public.users where id = %L', pg_temp.f('T')),
+    'users cannot select the email column of anyone');
+
+  -- self profile comes from the definer function
+  select public.my_profile() into v_json;
+  perform pg_temp.ok_if(v_json->>'name' = 'طالب' and v_json->>'user_code' is not null,
+    'my_profile() returns the signed-in user''s full profile');
+
+  -- the admin view hides everything from non-admins and shows names to admins
+  select count(id) into n from public.v_users_admin;
+  perform pg_temp.ok_if(n = 0, 'v_users_admin is empty for regular users');
+  perform pg_temp.act('A');
+  select count(name) into n from public.v_users_admin where id = pg_temp.f('S');
+  perform pg_temp.ok_if(n = 1, 'admins read names through v_users_admin');
+
+  -- lineage tree exposes names only to admins
+  perform pg_temp.act('T');
+  select name into v_name from public.get_lineage_tree(null)
+    where user_id = pg_temp.f('S') and juz_number = 1 and depth = 1;
+  perform pg_temp.ok_if(v_name is null, 'non-admin lineage shows no names');
+
+  -- chat only between a learner and the teacher assigned to them
+  perform pg_temp.act('S');
+  insert into public.chat_messages (sender_id, recipient_id, body)
+    values (pg_temp.f('S'), pg_temp.f('T'), 'سلام عليكم معلم');
+  perform pg_temp.expect_fail(
+    format('insert into public.chat_messages (sender_id, recipient_id, body) values (%L, %L, %L)',
+           pg_temp.f('S'), pg_temp.f('X'), 'hi'),
+    'cannot chat with an unrelated user');
+  perform pg_temp.expect_fail(
+    format('insert into public.chat_messages (sender_id, recipient_id, body) values (%L, %L, %L)',
+           pg_temp.f('X'), pg_temp.f('S'), 'hi'),
+    'a stranger cannot initiate chat either');
+
+  -- the teacher reads it; bodies are immutable; the receipt can be set once
+  perform pg_temp.act('T');
+  select count(id) into n from public.chat_messages where sender_id = pg_temp.f('S');
+  perform pg_temp.ok_if(n = 1, 'the assigned teacher receives the chat message');
+  perform pg_temp.expect_fail(
+    format('update public.chat_messages set body = %L where sender_id = %L', 'edited', pg_temp.f('S')),
+    'chat message bodies are immutable');
+  update public.chat_messages set read_at = now() where sender_id = pg_temp.f('S');
+  get diagnostics n = row_count;
+  perform pg_temp.ok_if(n = 1, 'the recipient can mark a message read');
+  update public.chat_messages set read_at = now() where sender_id = pg_temp.f('S');
+  get diagnostics n = row_count;
+  perform pg_temp.ok_if(n = 0, 'read_at can only be set once');
+
+  -- signup needs no email confirmation: the trigger confirms on insert
+  perform pg_temp.as_postgres();
+  v_state := gen_random_uuid()::text;
+  insert into auth.users (
+    id, instance_id, aud, role, email, encrypted_password, raw_user_meta_data,
+    raw_app_meta_data, created_at, updated_at, confirmation_token,
+    is_sso_user, is_anonymous
+  ) values (
+    v_state::uuid, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+    'fx_confirm_' || substr(v_state, 1, 8) || '@test.local', 'x',
+    jsonb_build_object('name', 'تأكيد فوري'), '{}'::jsonb,
+    now(), now(), 'pending-token', false, false
+  );
+  select (email_confirmed_at is not null)::int, confirmation_token into n, v_name
+    from auth.users where id = v_state::uuid;
+  perform pg_temp.ok_if(n = 1, 'signup is confirmed immediately (no email round-trip)');
+  perform pg_temp.ok_if(v_name = '', 'confirmation token is cleared on signup');
+end $$;
+
 -- ============ 8. function privileges and RLS coverage ============
+do $$
+declare n int;
+begin
 do $$
 declare n int;
 begin
@@ -480,8 +564,75 @@ begin
     'signed-in users can call is_admin() (used by RLS)');
   perform pg_temp.ok_if(has_function_privilege('authenticated', 'public.get_lineage_tree(uuid)', 'EXECUTE'),
     'signed-in users can call get_lineage_tree()');
+  perform pg_temp.ok_if(has_function_privilege('authenticated', 'public.my_profile()', 'EXECUTE'),
+    'signed-in users can call my_profile()');
+  perform pg_temp.ok_if(not has_function_privilege('anon', 'public.my_profile()', 'EXECUTE'),
+    'anon cannot call my_profile()');
+  perform pg_temp.ok_if(has_function_privilege('authenticated', 'public.can_chat_with(uuid)', 'EXECUTE'),
+    'signed-in users can call can_chat_with()');
+  perform pg_temp.ok_if(not has_function_privilege('anon', 'public.can_chat_with(uuid)', 'EXECUTE'),
+    'anon cannot call can_chat_with()');
   select count(*) into n from pg_tables where schemaname = 'public' and not rowsecurity;
   perform pg_temp.ok_if(n = 0, 'row-level security is enabled on every public table');
+end $$;
+
+-- ============ 9. viewer list ============
+do $$
+declare
+  n int;
+  v_row uuid;
+begin
+  -- R adds a fresh self-mark at a dedicated location; the whole test hinges on it
+  perform pg_temp.act('R');
+  insert into public.mushaf_errors (reciter_id, marker_id, location, error_type_id)
+    select pg_temp.f('R'), pg_temp.f('R'), '2:30:1', id
+    from public.error_types where code = 'talqeen';
+
+  -- the owner invites an existing account; nobody can extend someone else's list
+  insert into public.viewer_list (owner_id, viewer_id) values (pg_temp.f('R'), pg_temp.f('X'))
+    returning id into v_row;
+  perform pg_temp.ok_if(v_row is not null, 'owner can invite an existing account');
+  perform pg_temp.act('X');
+  perform pg_temp.expect_fail(
+    format('insert into public.viewer_list (owner_id, viewer_id) values (%L, %L)',
+      pg_temp.f('X'), pg_temp.f('R')),
+    'only the owner can add to his own viewer list');
+
+  -- pending: the viewer cannot read the owner's marks yet
+  select count(*) into n
+    from public.mushaf_errors where reciter_id = pg_temp.f('R') and location = '2:30:1';
+  perform pg_temp.ok_if(n = 0, 'a pending viewer cannot read the owner''s marks');
+
+  -- only the invited viewer can accept; the owner cannot accept on his behalf
+  perform pg_temp.act('R');
+  perform pg_temp.expect_fail(
+    format('select public.accept_viewer_invite(%L)', v_row),
+    'the owner cannot accept the invite for the viewer');
+  perform pg_temp.act('X');
+  perform public.accept_viewer_invite(v_row);
+
+  -- accepted: the viewer reads the owner's self-marks
+  select count(*) into n
+    from public.mushaf_errors where reciter_id = pg_temp.f('R') and location = '2:30:1';
+  perform pg_temp.ok_if(n = 1, 'an accepted viewer reads the owner''s self-marks');
+
+  -- sessions: the owner's sent sessions are visible, drafts are not
+  select count(*) into n from public.mushaf_sessions
+    where reciter_id = pg_temp.f('R') and state <> 'draft';
+  perform pg_temp.ok_if(n > 0, 'an accepted viewer sees the owner''s sent sessions');
+  select count(*) into n from public.mushaf_sessions where state = 'draft';
+  perform pg_temp.ok_if(n = 0, 'draft sessions stay invisible to the viewer');
+
+  -- marks of OTHER reciters are never exposed (the owner was only a listener there)
+  select count(*) into n from public.mushaf_errors where reciter_id = pg_temp.f('S');
+  perform pg_temp.ok_if(n = 0, 'marks of other reciters stay invisible to the viewer');
+
+  -- the viewer may leave (the owner can remove him too): both delete as themselves
+  perform pg_temp.act('X');
+  delete from public.viewer_list where id = v_row;
+  select count(*) into n from public.viewer_list where owner_id = pg_temp.f('R');
+  perform pg_temp.ok_if(n = 0, 'the viewer can leave the list himself');
+  perform pg_temp.as_postgres();
 end $$;
 
 rollback;

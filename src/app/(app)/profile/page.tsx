@@ -5,6 +5,7 @@ import type { Profile } from '@/types';
 import { ProfileForm } from './profile-form';
 import { CopyCode } from './copy-code';
 import { AutoAcceptSection, type AutoAcceptItem } from './auto-accept';
+import { ViewersSection, type ViewerRow } from './viewers';
 import { formatArabicDate, toArabicDigits } from '@/lib/utils';
 
 export default async function ProfilePage() {
@@ -14,11 +15,8 @@ export default async function ProfilePage() {
   } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
-  const { data: profile } = await supabase
-    .from('users')
-    .select('*')
-    .eq('auth_user_id', user.id)
-    .single<Profile>();
+  // names/emails are private; my_profile() returns the OWN row (migration 0013)
+  const { data: profile } = await supabase.rpc('my_profile').single<Profile>();
 
   if (!profile) {
     return <p className="text-danger">{ar.common.unexpected}</p>;
@@ -32,13 +30,40 @@ export default async function ProfilePage() {
 
   const listenerIds = (links ?? []).map((l) => l.listener_id);
   const { data: listeners } = listenerIds.length
-    ? await supabase.from('users').select('id, name, user_code').in('id', listenerIds)
-    : { data: [] as { id: string; name: string; user_code: string }[] };
+    ? await supabase.from('users').select('id, user_code').in('id', listenerIds)
+    : { data: [] as { id: string; user_code: string }[] };
 
   const items: AutoAcceptItem[] = (listeners ?? []).map((l) => ({
     id: l.id,
-    name: l.name,
     code: l.user_code,
+  }));
+
+  /* my viewer list: ones I invited (I am the owner) + invitations sent to me (I am the viewer) */
+  const [ownedRes, receivedRes] = await Promise.all([
+    supabase.from('viewer_list').select('id, viewer_id, state, created_at').eq('owner_id', profile.id).order('created_at'),
+    supabase.from('viewer_list').select('id, owner_id, state, created_at').eq('viewer_id', profile.id).order('created_at'),
+  ]);
+  const counterpartIds = [
+    ...new Set([
+      ...(ownedRes.data ?? []).map((r: { viewer_id: string }) => r.viewer_id),
+      ...(receivedRes.data ?? []).map((r: { owner_id: string }) => r.owner_id),
+    ]),
+  ];
+  const { data: counterparts } = counterpartIds.length
+    ? await supabase.from('users').select('id, user_code').in('id', counterpartIds)
+    : { data: [] as { id: string; user_code: string }[] };
+  const codeOfViewer = new Map((counterparts ?? []).map((u) => [u.id, u.user_code]));
+  const stateOf = (state: unknown): 'pending' | 'accepted' => (state === 'accepted' ? 'accepted' : 'pending');
+
+  const managed: ViewerRow[] = (ownedRes.data ?? []).map((r: { id: string; viewer_id: string; state: unknown }) => ({
+    id: r.id,
+    code: codeOfViewer.get(r.viewer_id) ?? '',
+    state: stateOf(r.state),
+  }));
+  const received: ViewerRow[] = (receivedRes.data ?? []).map((r: { id: string; owner_id: string; state: unknown }) => ({
+    id: r.id,
+    code: codeOfViewer.get(r.owner_id) ?? '',
+    state: stateOf(r.state),
   }));
 
   return (
@@ -67,6 +92,8 @@ export default async function ProfilePage() {
       <section className="card">
         <AutoAcceptSection items={items} />
       </section>
+
+      <ViewersSection managed={managed} received={received} />
     </div>
   );
 }

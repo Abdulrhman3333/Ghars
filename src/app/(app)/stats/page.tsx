@@ -3,15 +3,15 @@ import { getCurrentProfile } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { toArabicDigits } from '@/lib/utils';
 
-type TreeRow = {
-  user_id: string;
-  name: string;
-  user_code: string;
-  certifier_id: string;
-  juz_number: number;
-  depth: number;
-  certified_at: string | null;
-};
+  type TreeRow = {
+    user_id: string;
+    name: string | null;
+    user_code: string;
+    certifier_id: string;
+    juz_number: number;
+    depth: number;
+    certified_at: string | null;
+  };
 
 type TreeNode = { userId: string; name: string; code: string; juz: number[] };
 
@@ -33,7 +33,7 @@ export default async function StatsPage() {
   const childrenOf = new Map<string, Map<string, TreeNode>>();
   for (const r of rows) {
     const group = childrenOf.get(r.certifier_id) ?? new Map<string, TreeNode>();
-    const node = group.get(r.user_id) ?? { userId: r.user_id, name: r.name, code: r.user_code, juz: [] };
+    const node = group.get(r.user_id) ?? { userId: r.user_id, name: r.name ?? '', code: r.user_code, juz: [] };
     node.juz.push(r.juz_number);
     group.set(r.user_id, node);
     childrenOf.set(r.certifier_id, group);
@@ -144,8 +144,8 @@ function Tree({
         <li key={n.userId}>
           <details open={depth < 2}>
             <summary className="cursor-pointer text-sm font-bold text-ink">
-              {n.name}
-              <span className="ms-2 font-mono text-xs text-ink/50" dir="ltr">{toArabicDigits(n.code)}</span>
+              {n.name && <>{n.name}<span className="ms-2 font-mono text-xs text-ink/60" dir="ltr">{toArabicDigits(n.code)}</span></>}
+              {!n.name && <span dir="ltr">{toArabicDigits(n.code)}</span>}
               <span className="ms-2 text-xs text-gold-dark">
                 ({ar.students.juz} {n.juz.map((j) => toArabicDigits(j)).join('، ')})
               </span>

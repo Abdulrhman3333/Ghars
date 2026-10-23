@@ -3,7 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 
 /** Throws 404 unless the signed-in user holds the admin role (RLS also enforces every admin write). */
-export async function requireAdmin(): Promise<{ id: string; name: string }> {
+export async function requireAdmin(): Promise<{ id: string; user_code: string }> {
   const me = await getCurrentProfile();
   const supabase = await createClient();
   const { data } = await supabase
@@ -16,8 +16,11 @@ export async function requireAdmin(): Promise<{ id: string; name: string }> {
   return me;
 }
 
-/** The signed-in user's profile id and name; redirects to /login when there is none. */
-export async function getCurrentProfile(): Promise<{ id: string; name: string }> {
+/**
+ * The signed-in user's profile id and public code. Names are private (self + admin only,
+ * migration 0013) — pages address other users by `user_code`. Redirects to /login otherwise.
+ */
+export async function getCurrentProfile(): Promise<{ id: string; user_code: string }> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -26,7 +29,7 @@ export async function getCurrentProfile(): Promise<{ id: string; name: string }>
 
   const { data } = await supabase
     .from('users')
-    .select('id, name')
+    .select('id, user_code')
     .eq('auth_user_id', user.id)
     .single();
   if (!data) redirect('/login');

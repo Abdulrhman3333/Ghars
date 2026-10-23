@@ -77,6 +77,38 @@ export async function reviewCommonError(formData: FormData): Promise<void> {
   redirect('/admin/common-errors?saved=1');
 }
 
+/** Admins can EDIT a submission before approving it (texts, category, notes). */
+export async function editCommonError(formData: FormData): Promise<void> {
+  const id = uuid.safeParse(formData.get('id'));
+  const parsed = z
+    .object({
+      category_id: z.coerce.number().int().positive(),
+      correct_text: z.string().trim().min(1).max(300),
+      incorrect_text: z.string().trim().min(1).max(300),
+      notes: z.string().trim().max(1000),
+    })
+    .safeParse({
+      category_id: formData.get('category_id'),
+      correct_text: formData.get('correct_text'),
+      incorrect_text: formData.get('incorrect_text'),
+      notes: formData.get('notes') ?? '',
+    });
+  if (!id.success || !parsed.success) redirect('/admin/common-errors?error=invalid');
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('common_errors')
+    .update({
+      category_id: parsed.data.category_id,
+      correct_text: parsed.data.correct_text,
+      incorrect_text: parsed.data.incorrect_text,
+      notes: parsed.data.notes || null,
+    })
+    .eq('id', id.data);
+  revalidatePath('/admin/common-errors');
+  redirect(error ? '/admin/common-errors?error=save' : '/admin/common-errors?saved=1');
+}
+
 export async function createResourceLink(formData: FormData): Promise<void> {
   const parsed = z
     .object({

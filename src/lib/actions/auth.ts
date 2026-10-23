@@ -55,9 +55,14 @@ export async function register(_prev: ActionState, formData: FormData): Promise<
     return { error: alreadyRegistered ? ar.auth.emailExists : ar.auth.genericError };
   }
 
-  // session is null when e-mail confirmation is required
+  // email confirmation is automatic (trigger `auto_confirm_signup`): sign in right away
   if (!data.session) {
-    return { success: ar.auth.registerSent, needsConfirmation: true };
+    const { error: loginError } = await supabase.auth.signInWithPassword({
+      email: v.email,
+      password: v.password,
+    });
+    if (!loginError) redirect('/home');
+    return { success: ar.auth.registerSent };
   }
   redirect('/home');
 }

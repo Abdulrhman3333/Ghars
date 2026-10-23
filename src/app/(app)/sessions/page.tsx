@@ -3,7 +3,7 @@ import ar from '@/messages/ar.json';
 import { getCurrentProfile } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { respondToSession } from '@/lib/actions/sessions';
-import { formatArabicDate } from '@/lib/utils';
+import { formatArabicDate, formatArabicTime12 } from '@/lib/utils';
 import { NewSessionForm } from './new-session-form';
 
 type SessionRow = {
@@ -31,7 +31,8 @@ export default async function SessionsPage({
     .returns<SessionRow[]>();
   const sessions = data ?? [];
 
-  // the other party's name is visible only once a session has left its draft state (RLS)
+  // the partner's code is visible only once a session has left its draft state (RLS);
+  // names stay private — users are addressed by user_code (migration 0013)
   const otherIds = [
     ...new Set(
       sessions
@@ -40,9 +41,9 @@ export default async function SessionsPage({
     ),
   ];
   const { data: others } = otherIds.length
-    ? await supabase.from('users').select('id, name').in('id', otherIds)
-    : { data: [] as { id: string; name: string }[] };
-  const nameOf = new Map((others ?? []).map((u) => [u.id, u.name]));
+    ? await supabase.from('users').select('id, user_code').in('id', otherIds)
+    : { data: [] as { id: string; user_code: string }[] };
+  const codeOf = new Map((others ?? []).map((u) => [u.id, u.user_code]));
 
   const incoming = sessions.filter((s) => s.reciter_id === me.id && s.state === 'awaiting_reciter_approval');
   const received = sessions.filter(
@@ -70,7 +71,7 @@ export default async function SessionsPage({
       {incoming.length > 0 && (
         <Group title={ar.sessions.incoming}>
           {incoming.map((s) => (
-            <Item key={s.id} date={s.session_date} who={`${ar.sessions.from}: ${nameOf.get(s.listener_id) ?? ''}`}>
+            <Item key={s.id} date={s.session_date} who={`${ar.sessions.from}: ${codeOf.get(s.listener_id) ?? ''}`} reviewHref={`/mushaf/session/${s.id}/review`}>
               <form action={respondToSession} className="flex gap-2">
                 <input type="hidden" name="sessionId" value={s.id} />
                 <button name="accept" value="true" className="btn-primary px-3 py-1.5 text-xs">{ar.sessions.accept}</button>
@@ -83,7 +84,7 @@ export default async function SessionsPage({
 
       <Group title={ar.sessions.drafts}>
         {drafts.map((s) => (
-          <Item key={s.id} date={s.session_date} who={ar.sessions.draftLabel}>
+          <Item key={s.id} date={s.session_date} who={ar.sessions.draftLabel} reviewHref={`/mushaf/session/${s.id}/review`}>
             <Link href={`/mushaf/session/${s.id}/1`} className="text-sm font-bold text-amber-brand hover:underline">
               {ar.sessions.continue}
             </Link>
@@ -93,7 +94,7 @@ export default async function SessionsPage({
 
       <Group title={ar.sessions.sent}>
         {sentByMe.map((s) => (
-          <Item key={s.id} date={s.session_date} who={`${ar.sessions.to}: ${nameOf.get(s.reciter_id) ?? ''}`}>
+          <Item key={s.id} date={s.session_date} who={`${ar.sessions.to}: ${codeOf.get(s.reciter_id) ?? ''}`} reviewHref={`/mushaf/session/${s.id}/review`}>
             <StateBadge state={s.state} />
           </Item>
         ))}
@@ -101,7 +102,7 @@ export default async function SessionsPage({
 
       <Group title={ar.sessions.received}>
         {received.map((s) => (
-          <Item key={s.id} date={s.session_date} who={`${ar.sessions.from}: ${nameOf.get(s.listener_id) ?? ''}`}>
+          <Item key={s.id} date={s.session_date} who={`${ar.sessions.from}: ${codeOf.get(s.listener_id) ?? ''}`} reviewHref={`/mushaf/session/${s.id}/review`}>
             <StateBadge state={s.state} />
           </Item>
         ))}
@@ -125,12 +126,36 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
-function Item({ date, who, children }: { date: string; who: string; children: React.ReactNode }) {
+function Item({
+  date,
+  who,
+  children,
+  reviewHref,
+}: {
+  date: string;
+  who: string;
+  children?: React.ReactNode;
+  /** when set, the who/date block links to the session's error review page */
+  reviewHref?: string;
+}) {
+  const block = (
+    <>
+      <p className="font-bold text-ink">{who}</p>
+      <p className="text-xs text-ink/60">
+        {formatArabicDate(date)} · {formatArabicTime12(date)}
+      </p>
+    </>
+  );
   return (
     <li className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
       <div>
-        <p className="font-bold text-ink">{who}</p>
-        <p className="text-xs text-ink/60">{formatArabicDate(date)}</p>
+        {reviewHref ? (
+          <Link href={reviewHref} className="block hover:text-amber-brand hover:underline">
+            {block}
+          </Link>
+        ) : (
+          block
+        )}
       </div>
       {children}
     </li>

@@ -13,12 +13,15 @@ type Row = {
   state: 'pending_review' | 'approved' | 'rejected';
   correct_audio_path: string | null;
   incorrect_audio_path: string | null;
+  correct_image_path: string | null;
+  incorrect_image_path: string | null;
   submitted_by: string;
 };
 
 const ERRORS: Record<string, string> = {
   invalid: ar.commonErrors.errors.invalid,
   audio: ar.commonErrors.errors.audio,
+  image: ar.commonErrors.errors.image,
   upload: ar.commonErrors.errors.upload,
   save: ar.commonErrors.errors.save,
 };
@@ -36,7 +39,7 @@ export default async function CommonErrorsPage({
     supabase.from('common_error_categories').select('id, name_ar').order('sort'),
     supabase
       .from('common_errors')
-      .select('id, category_id, correct_text, incorrect_text, notes, state, correct_audio_path, incorrect_audio_path, submitted_by')
+      .select('id, category_id, correct_text, incorrect_text, notes, state, correct_audio_path, incorrect_audio_path, correct_image_path, incorrect_image_path, submitted_by')
       .order('created_at', { ascending: false })
       .limit(100)
       .returns<Row[]>(),
@@ -47,11 +50,16 @@ export default async function CommonErrorsPage({
   // RLS returns non-approved rows only to their submitter (or an admin)
   const mine = (rows ?? []).filter((r) => r.state !== 'approved');
 
-  // signed URLs for approved audio (policy allows playback of approved clips only)
+  // signed URLs: approved audio/images may be played/viewed by everyone; policy allows admins and submitters
   const audioPaths = approved.flatMap((r) => [r.correct_audio_path, r.incorrect_audio_path]).filter(Boolean) as string[];
+  const imagePaths = approved.flatMap((r) => [r.correct_image_path, r.incorrect_image_path]).filter(Boolean) as string[];
   const signed = new Map<string, string>();
   if (audioPaths.length) {
     const { data } = await supabase.storage.from('audio').createSignedUrls(audioPaths, 3600);
+    for (const d of data ?? []) if (d.path && d.signedUrl) signed.set(d.path, d.signedUrl);
+  }
+  if (imagePaths.length) {
+    const { data } = await supabase.storage.from('error-images').createSignedUrls(imagePaths, 3600);
     for (const d of data ?? []) if (d.path && d.signedUrl) signed.set(d.path, d.signedUrl);
   }
 
@@ -94,6 +102,14 @@ export default async function CommonErrorsPage({
               <label htmlFor="incorrect_audio" className="field-label">{ar.commonErrors.incorrectAudio}</label>
               <input id="incorrect_audio" name="incorrect_audio" type="file" accept="audio/*" className="field-input" />
             </div>
+            <div>
+              <label htmlFor="correct_image" className="field-label">{ar.commonErrors.correctImage}</label>
+              <input id="correct_image" name="correct_image" type="file" accept="image/png,image/jpeg,image/webp" className="field-input" />
+            </div>
+            <div>
+              <label htmlFor="incorrect_image" className="field-label">{ar.commonErrors.incorrectImage}</label>
+              <input id="incorrect_image" name="incorrect_image" type="file" accept="image/png,image/jpeg,image/webp" className="field-input" />
+            </div>
           </div>
           <div>
             <label htmlFor="notes" className="field-label">{ar.commonErrors.notes}</label>
@@ -113,8 +129,8 @@ export default async function CommonErrorsPage({
               <li key={r.id} className="card space-y-3">
                 <p className="text-xs font-bold text-amber-brand">{categoryName.get(r.category_id)}</p>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Clip label={ar.commonErrors.correct} text={r.correct_text} src={r.correct_audio_path ? signed.get(r.correct_audio_path) : undefined} tone="text-success" />
-                  <Clip label={ar.commonErrors.incorrect} text={r.incorrect_text} src={r.incorrect_audio_path ? signed.get(r.incorrect_audio_path) : undefined} tone="text-danger" />
+                  <Clip label={ar.commonErrors.correct} text={r.correct_text} src={r.correct_audio_path ? signed.get(r.correct_audio_path) : undefined} img={r.correct_image_path ? signed.get(r.correct_image_path) : undefined} tone="text-success" />
+                  <Clip label={ar.commonErrors.incorrect} text={r.incorrect_text} src={r.incorrect_audio_path ? signed.get(r.incorrect_audio_path) : undefined} img={r.incorrect_image_path ? signed.get(r.incorrect_image_path) : undefined} tone="text-danger" />
                 </div>
                 {r.notes && <p className="text-sm text-ink/70">{r.notes}</p>}
               </li>
@@ -140,12 +156,16 @@ export default async function CommonErrorsPage({
   );
 }
 
-function Clip({ label, text, src, tone }: { label: string; text: string; src?: string; tone: string }) {
+function Clip({ label, text, src, img, tone }: { label: string; text: string; src?: string; img?: string; tone: string }) {
   return (
     <div className="space-y-2 rounded-xl border border-sand bg-white p-3">
       <p className={`text-xs font-bold ${tone}`}>{label}</p>
       <p className="font-quran text-xl">{text}</p>
       {src && <audio controls preload="none" src={src} className="w-full" />}
+      {img && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={img} alt={label} className="max-h-48 w-auto rounded-xl border border-sand" />
+      )}
     </div>
   );
 }

@@ -15,7 +15,7 @@ export default async function AdminUsersPage({
   const supabase = await createClient();
 
   const [{ data: users }, { data: roles }] = await Promise.all([
-    supabase.from('users').select('id, name, email, user_code').order('register_date', { ascending: false }).limit(200),
+    supabase.from('v_users_admin').select('id, name, email, user_code').order('register_date', { ascending: false }).limit(200),
     supabase.from('user_roles').select('user_id, role'),
   ]);
 

@@ -9,12 +9,17 @@ export default async function HomePage() {
   const me = await getCurrentProfile();
   const supabase = await createClient();
 
-  // My Students is visible only to users who have passed at least one juz' (spec §2)
-  const { count: passedCount } = await supabase
-    .from('progress')
-    .select('id', { count: 'exact', head: true })
-    .eq('student_id', me.id)
-    .eq('state', 'passed');
+  // the user always sees their own name (privacy: names are private to everyone else)
+  const [profileRes, passedRes] = await Promise.all([
+    supabase.rpc('my_profile'),
+    supabase
+      .from('progress')
+      .select('id', { count: 'exact', head: true })
+      .eq('student_id', me.id)
+      .eq('state', 'passed'),
+  ]);
+  const profile = profileRes.data;
+  const passedCount = passedRes.count;
   const isCertified = (passedCount ?? 0) > 0;
 
   const active: Card[] = [
@@ -33,7 +38,7 @@ export default async function HomePage() {
     <div className="space-y-8">
       <section>
         <h1 className="text-2xl font-bold text-gold-dark">
-          {ar.home.welcome}، {me.name}
+          {ar.home.welcome}، {profile?.name ?? me.user_code}
         </h1>
       </section>
 

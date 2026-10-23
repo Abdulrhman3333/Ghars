@@ -2,10 +2,15 @@ import 'server-only';
 import { createClient } from '@/lib/supabase/server';
 import type { MarkRow } from '@/components/mushaf/mushaf-view';
 
-type Scope = { kind: 'self'; userId: string } | { kind: 'session'; sessionId: string; editable: boolean };
+type Scope =
+  | { kind: 'self' | 'of'; userId: string }
+  | { kind: 'session'; sessionId: string; editable: boolean };
 
 /**
- * Own marks + marks of accepted sessions (self view), or the marks of one session (session view).
+ * scope kinds:
+ * - 'self'  — my own marks (Mushaf personal view)
+ * - 'of'    — another user's marks, read-only (viewer list access; RLS gates visibility)
+ * - 'session' — the marks of one session (listener/reciter/viewer session view)
  * RLS decides visibility; these filters only narrow the result to the current page.
  */
 export async function loadMarks(scope: Scope, locations: string[]): Promise<MarkRow[]> {
@@ -15,16 +20,16 @@ export async function loadMarks(scope: Scope, locations: string[]): Promise<Mark
     .select('id, location, letter_indexes, error_type_id, subtype_id, session_id')
     .in('location', locations);
 
-  query = scope.kind === 'self'
-    ? query.eq('reciter_id', scope.userId)
-    : query.eq('session_id', scope.sessionId);
+  query = scope.kind === 'session'
+    ? query.eq('session_id', scope.sessionId)
+    : query.eq('reciter_id', scope.userId);
 
   const { data, error } = await query;
   if (error || !data) return [];
 
   const rows: MarkRow[] = [];
   for (const r of data) {
-    const readonly = scope.kind === 'self' ? r.session_id !== null : !scope.editable;
+    const readonly = scope.kind === 'session' ? !scope.editable : r.session_id !== null;
     const indexes = r.letter_indexes?.length ? r.letter_indexes : [null];
     for (const idx of indexes) {
       rows.push({

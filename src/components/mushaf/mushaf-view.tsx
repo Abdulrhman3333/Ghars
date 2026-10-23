@@ -14,6 +14,7 @@ import ar from '@/messages/ar.json';
 import { applyMark, type SavedMark } from '@/lib/actions/marks';
 import type { ErrorSubtype, ErrorType } from '@/lib/mushaf/load';
 import type { Line, LineItem, WordItem } from '@/lib/mushaf/model';
+import { clusterize } from '@/lib/mushaf/clusters';
 import { planLetter, planWord, type MarkPlan, type MarkRow, type Tool } from '@/lib/mushaf/plan';
 import { fitLines } from './fit';
 import './mushaf.css';
@@ -36,16 +37,6 @@ const FONT_BASE = 'https://verses.quran.foundation/fonts/quran/hafs/v2/woff2';
 const LONG_PRESS_MS = 500;
 const AR_DIGITS = '٠١٢٣٤٥٦٧٨٩';
 const toAr = (n: number | string) => String(n).replace(/\d/g, (d) => AR_DIGITS[Number(d)]);
-
-/** base letter + its combining marks stay together (port of clusterize()) */
-function clusterize(text: string): string[] {
-  const out: string[] = [];
-  for (const ch of text) {
-    if (out.length && /\p{M}|\u200D/u.test(ch)) out[out.length - 1] += ch;
-    else out.push(ch);
-  }
-  return out;
-}
 
 const fontFaces = new Map<number, FontFace>();
 
@@ -88,6 +79,10 @@ export function MushafView(props: Props) {
   const chain = useRef<Promise<void>>(Promise.resolve());
   const [tool, setTool] = useState<Tool>(defaultTool);
   const [subtypeId, setSubtypeId] = useState<number | null>(null);
+  /* kind chosen inside the letter modal; deliberately starts empty on every long press
+     so the previously selected kind is never applied automatically */
+  const [modalTool, setModalTool] = useState<Tool | null>(null);
+  const [modalSubtype, setModalSubtype] = useState<number | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [fontFor, setFontFor] = useState<number | null>(null);
@@ -171,6 +166,8 @@ export function MushafView(props: Props) {
       pressLong.current = true;
       if (navigator.vibrate) navigator.vibrate(10);
       if (item.location.startsWith('1:1:')) return flashBanner(ar.mushaf.bismillahBlocked);
+      setModalTool(null);
+      setModalSubtype(null);
       setModal({ location: item.location, text: item.text });
     }, LONG_PRESS_MS);
   }
@@ -285,7 +282,16 @@ export function MushafView(props: Props) {
 
   const modalWordColors = modal ? wordColors(modal.location) : null;
   const modalClusters = modal ? clusterize(modal.text) : [];
-  const toolColor = tool === 'erase' ? '#7c5a10' : colorOf(tool);
+  /* existing mistake per letter (readonly marks win, same as wordColors) */
+  const modalLetterMarks = new Map<number, MarkRow>();
+  if (modal) {
+    const list = [...(rowsByLoc.get(modal.location) ?? [])].sort(
+      (a, b) => Number(a.readonly) - Number(b.readonly),
+    );
+    for (const r of list) {
+      if (r.letterIndex !== null && !modalLetterMarks.has(r.letterIndex)) modalLetterMarks.set(r.letterIndex, r);
+    }
+  }
   const prev = Math.max(1, page - 1);
   const next = Math.min(604, page + 1);
 
@@ -384,24 +390,82 @@ export function MushafView(props: Props) {
                 {ar.mushaf.close}
               </button>
             </div>
-            <div className="flex flex-wrap justify-center gap-2 py-2 font-quran text-3xl" dir="rtl" style={{ fontFamily: 'var(--font-quran), serif' }}>
-              {modalClusters.map((cl, i) => (
+            <div className="flex flex-wrap items-start justify-center gap-2 py-2 font-quran text-3xl" dir="rtl" style={{ fontFamily: 'var(--font-quran), serif' }}>
+              {modalClusters.map((cl, i) => {
+                const letterMark = modalLetterMarks.get(i);
+                return (
+                  <span key={i} className="flex flex-col items-center gap-0.5">
+                    <button
+                      type="button"
+                      disabled={!editable}
+                      aria-pressed={!!letterMark}
+                      onClick={() => {
+                        if (modalTool === null) return;
+                        enqueue(() => planLetter(rowsRef.current, modal.location, i, modalTool, modalSubtype));
+                      }}
+                      className="rounded-xl border-2 border-sand bg-white px-2 py-1 leading-loose transition active:scale-95 disabled:opacity-60 aria-pressed:border-amber-brand"
+                      style={{ color: modalWordColors.letters.get(i) ?? modalWordColors.word ?? undefined }}
+                    >
+                      {cl}
+                    </button>
+                    {letterMark && (
+                      <span className="text-[10px] font-bold leading-none" style={{ color: colorOf(letterMark.typeId) }}>
+                        {typeById.get(letterMark.typeId)?.name_ar}
+                      </span>
+                    )}
+                  </span>
+                );
+              })}
+            </div>
+            <p
+              className={`text-center text-xs${modalTool === null ? ' font-bold' : ' text-ink/60'}`}
+              style={modalTool === null ? { color: '#b45309' } : undefined}
+            >
+              {modalTool === null ? ar.mushaf.chooseKindFirst : ar.mushaf.letterHint}
+            </p>
+
+            {/* kind of mistake, chosen here inside the word — not inherited from the toolbar */}
+            <div className="flex flex-wrap items-center justify-center gap-1.5">
+              {types.map((t) => (
                 <button
-                  key={i}
+                  key={t.id}
                   type="button"
                   disabled={!editable}
-                  onClick={() => enqueue(() => planLetter(rowsRef.current, modal.location, i, tool, subtypeId))}
-                  className="rounded-xl border-2 border-sand bg-white px-2 py-1 leading-loose transition active:scale-95 disabled:opacity-60"
-                  style={{ color: modalWordColors.letters.get(i) ?? modalWordColors.word ?? undefined }}
+                  aria-pressed={modalTool === t.id}
+                  onClick={() => setModalTool(t.id)}
+                  className="flex items-center gap-1 rounded-lg border border-sand bg-white px-2 py-1 text-xs font-bold text-gold-dark disabled:opacity-60 aria-pressed:ring-2 aria-pressed:ring-amber-brand"
                 >
-                  {cl}
+                  <span className="block h-3 w-3 rounded-full" style={{ background: t.color_hex }} />
+                  {t.name_ar}
                 </button>
               ))}
+              <button
+                type="button"
+                disabled={!editable}
+                aria-pressed={modalTool === 'erase'}
+                onClick={() => setModalTool('erase')}
+                className="rounded-lg border border-sand bg-white px-2 py-1 text-xs font-bold text-gold-dark disabled:opacity-60 aria-pressed:ring-2 aria-pressed:ring-amber-brand"
+              >
+                {ar.mushaf.erase}
+              </button>
             </div>
-            <p className="text-center text-xs text-ink/60">{ar.mushaf.letterHint}</p>
-            <p className="text-center text-xs" style={{ color: toolColor }}>
-              {tool === 'erase' ? ar.mushaf.erase : typeById.get(tool)?.name_ar}
-            </p>
+            {modalTool !== null && tajweed && modalTool === tajweed.id && (
+              <select
+                aria-label={ar.mushaf.tajweedSubtype}
+                value={modalSubtype ?? ''}
+                onChange={(e) => setModalSubtype(e.target.value ? Number(e.target.value) : null)}
+                className="field-input mx-auto w-auto py-1 text-xs"
+              >
+                <option value="">{ar.mushaf.anySubtype}</option>
+                {subtypes
+                  .filter((s) => s.error_type_id === tajweed.id)
+                  .map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name_ar}
+                    </option>
+                  ))}
+              </select>
+            )}
           </div>
         </div>
       )}

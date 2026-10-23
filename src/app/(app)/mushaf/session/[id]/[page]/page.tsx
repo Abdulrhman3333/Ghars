@@ -7,6 +7,7 @@ import { loadMarks } from '@/lib/mushaf/marks';
 import { buildPageModel } from '@/lib/mushaf/model';
 import { MushafView } from '@/components/mushaf/mushaf-view';
 import { SendSessionButton } from '../../../../sessions/send-session-button';
+import { isAcceptedViewer } from '@/lib/mushaf/viewer-access';
 
 export default async function SessionMushafPage({
   params,
@@ -22,15 +23,23 @@ export default async function SessionMushafPage({
   const supabase = await createClient();
   const { data: session } = await supabase
     .from('mushaf_sessions')
-    .select('id, state, listener_id')
+    .select('id, state, listener_id, reciter_id')
     .eq('id', id)
     .single();
-  if (!session || session.listener_id !== me.id) notFound();
+  if (!session) notFound();
+  // participants open this view; an accepted viewer on the reciter's list may too (read-only)
+  const viewer =
+    session.listener_id !== me.id &&
+    session.reciter_id !== me.id &&
+    (await isAcceptedViewer(supabase, session.reciter_id, me.id));
+  if (!viewer && session.listener_id !== me.id && session.reciter_id !== me.id) notFound();
 
   const loaded = await loadMushafPage(page);
   if (!loaded) notFound();
 
-  const editable = session.state === 'draft';
+  // only the listener can mark, and only while the session is a draft;
+  // the reciter/accepted viewer opens the same view read-only to study/practice the marks
+  const editable = session.state === 'draft' && session.listener_id === me.id;
   const lines = buildPageModel(loaded.input);
   const initialMarks = await loadMarks(
     { kind: 'session', sessionId: id, editable },

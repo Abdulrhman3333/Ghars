@@ -51,9 +51,9 @@ export default async function CommitteePage({
 
   const personIds = [...new Set(exams.flatMap((e) => [e.student_id, e.nominated_by]))];
   const { data: people } = personIds.length
-    ? await supabase.from('users').select('id, name, user_code').in('id', personIds)
-    : { data: [] as { id: string; name: string; user_code: string }[] };
-  const nameOf = new Map((people ?? []).map((p) => [p.id, p.name]));
+    ? await supabase.from('users').select('id, user_code').in('id', personIds)
+    : { data: [] as { id: string; user_code: string }[] };
+  const codeOf = new Map((people ?? []).map((p) => [p.id, p.user_code]));
 
   const flash = Object.keys(FLASH).find((k) => params[k] === '1');
   const error = params.error;
@@ -77,11 +77,11 @@ export default async function CommitteePage({
             {queue.map((e) => (
               <li key={e.id} className="card flex flex-wrap items-center justify-between gap-3">
                 <div className="text-sm">
-                  <p className="font-bold text-gold-dark">
-                    {nameOf.get(e.student_id)} · {ar.students.juz} {toArabicDigits(e.juz_number)}
+                  <p className="font-bold text-gold-dark" dir="ltr">
+                    {toArabicDigits(codeOf.get(e.student_id) ?? '')} · {ar.students.juz} {toArabicDigits(e.juz_number)}
                   </p>
                   <p className="text-xs text-ink/60">
-                    {ar.committee.nominatedBy}: {nameOf.get(e.nominated_by)} · {formatArabicDate(e.created_at)}
+                    {ar.committee.nominatedBy}: {toArabicDigits(codeOf.get(e.nominated_by) ?? '')} · {formatArabicDate(e.created_at)}
                   </p>
                 </div>
                 <form action={claimExam}>
@@ -103,8 +103,8 @@ export default async function CommitteePage({
             {mine.map((e) => (
               <li key={e.id} className="card space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                  <p className="font-bold text-gold-dark">
-                    {nameOf.get(e.student_id)} · {ar.students.juz} {toArabicDigits(e.juz_number)}
+                  <p className="font-bold text-gold-dark" dir="ltr">
+                    {toArabicDigits(codeOf.get(e.student_id) ?? '')} · {ar.students.juz} {toArabicDigits(e.juz_number)}
                   </p>
                   <span className="rounded-full bg-sand px-2.5 py-0.5 text-xs font-bold text-gold-dark">
                     {ar.exams.states[e.state]}

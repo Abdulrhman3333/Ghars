@@ -56,8 +56,8 @@ export default async function StudentsPage({
 
   const studentIds = [...new Set(rows.map((r) => r.student_id))];
   const { data: students } = studentIds.length
-    ? await supabase.from('users').select('id, name, user_code').in('id', studentIds)
-    : { data: [] as { id: string; name: string; user_code: string }[] };
+    ? await supabase.from('users').select('id, user_code').in('id', studentIds)
+    : { data: [] as { id: string; user_code: string }[] };
   const studentById = new Map((students ?? []).map((s) => [s.id, s]));
 
   const byStudent = new Map<string, ProgressRow[]>();
@@ -102,10 +102,14 @@ export default async function StudentsPage({
             return (
               <li key={studentId} className="card space-y-3">
                 <div className="flex items-center justify-between gap-3">
-                  <Link href={`/students/${studentId}`} className="font-bold text-gold-dark hover:underline">
-                    {s?.name ?? ''}
+                  <Link href={`/students/${studentId}`} className="font-bold text-gold-dark hover:underline" dir="ltr">
+                    {toArabicDigits(s?.user_code ?? '')}
                   </Link>
-                  <span className="font-mono text-xs text-ink/60" dir="ltr">{toArabicDigits(s?.user_code ?? '')}</span>
+                  <div className="flex items-center gap-3">
+                    <Link href={`/chat/${studentId}`} className="text-xs font-bold text-amber-brand hover:underline">
+                      {ar.chat.openShort}
+                    </Link>
+                  </div>
                 </div>
                 <ul className="flex flex-wrap gap-2">
                   {list.map((r) => (

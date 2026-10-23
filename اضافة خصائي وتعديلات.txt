@@ -1,0 +1,25 @@
+In page common-errors, allow the admin to edit, not just accept and refuse. Also support that the student can add pictures for correct and a picture for incorrect 
+
+Make this platform with high privacy: don't share names or don't show names for other users.
+
+Make a simple chat between users. After assigning a teacher to a student, they can contact each other using chat.
+
+Could you explain why the platform is a little bit laggy? It takes a few seconds to move from page to page. 
+
+Create around 15 students with seeding data for them so I can illustrate how the platform will be. 
+
+Cancel the verification of email so the user joins the platform immediately without email verification. 
+
+What are the next steps to enhance this platform and complete it for production? 
+
+Make it so the user can choose the error kind inside the word. After a long press on a keyword, don't fix it with the previously selected kind. Below the letters, also show the kind of mistake, so the user can choose it again. 
+
+In the sessions list, if possible, show the time in 12 format beside the date. Also, allow the user to click on this specific session and see what the errors are and what kinds they are. So he can learn from it and practice. 
+
+Allow the user to add other users in a list, so these users will be allowed to read only his mistakes and see the sessions that he had, the parents may make accounts, and the user may send an invite to them to see his mistakes and sessions.
+
+
+====================
+
+
+
