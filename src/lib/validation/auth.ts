@@ -30,10 +30,7 @@ const ageRange = z.enum(AGE_RANGES, { errorMap: () => ({ message: e.ageInvalid }
 
 export const registerSchema = z
   .object({
-    name,
     email,
-    phone,
-    preferred_contact: preferredContact,
     age_range: ageRange,
     password,
     confirmPassword: z.string(),

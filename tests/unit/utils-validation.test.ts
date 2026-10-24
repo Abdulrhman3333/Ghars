@@ -23,10 +23,7 @@ describe('userCodeSchema', () => {
 
 describe('registerSchema', () => {
   const valid = {
-    name: 'عبدالرحمن',
     email: 'user@example.com',
-    phone: '',
-    preferred_contact: 'whatsapp',
     age_range: '25_34',
     password: 'secret123',
     confirmPassword: 'secret123',
@@ -41,8 +38,7 @@ describe('registerSchema', () => {
     expect(r.success).toBe(false);
   });
 
-  it('rejects an unknown contact method and an unknown age range', () => {
-    expect(registerSchema.safeParse({ ...valid, preferred_contact: 'fax' }).success).toBe(false);
+  it('rejects an unknown age range', () => {
     expect(registerSchema.safeParse({ ...valid, age_range: '99' }).success).toBe(false);
   });
 

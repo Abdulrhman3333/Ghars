@@ -21,10 +21,7 @@ function field(formData: FormData, key: string) {
 
 export async function register(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const parsed = registerSchema.safeParse({
-    name: field(formData, 'name'),
     email: field(formData, 'email'),
-    phone: field(formData, 'phone'),
-    preferred_contact: field(formData, 'preferred_contact'),
     age_range: field(formData, 'age_range'),
     password: field(formData, 'password'),
     confirmPassword: field(formData, 'confirmPassword'),
@@ -42,9 +39,6 @@ export async function register(_prev: ActionState, formData: FormData): Promise<
     options: {
       emailRedirectTo: `${origin}/auth/confirm?next=/home`,
       data: {
-        name: v.name,
-        phone: v.phone || null,
-        preferred_contact: v.preferred_contact,
         age_range: v.age_range,
       },
     },

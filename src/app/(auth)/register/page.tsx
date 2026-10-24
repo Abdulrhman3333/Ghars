@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useActionState } from 'react';
 import ar from '@/messages/ar.json';
 import { register } from '@/lib/actions/auth';
-import { AGE_RANGES, CONTACT_METHODS } from '@/lib/config';
+import { AGE_RANGES } from '@/lib/config';
 import { FormMessage } from '@/components/form-feedback';
 import type { ActionState } from '@/types';
 
@@ -18,28 +18,9 @@ export default function RegisterPage() {
       <h1 className="text-xl font-bold text-gold-dark">{ar.auth.registerTitle}</h1>
 
       <div>
-        <label htmlFor="name" className="field-label">{ar.auth.name}</label>
-        <input id="name" name="name" type="text" autoComplete="name" required minLength={2} maxLength={100} className="field-input" />
-      </div>
-
-      <div>
         <label htmlFor="email" className="field-label">{ar.auth.email}</label>
         <input id="email" name="email" type="email" dir="ltr" autoComplete="email" required className="field-input" />
-      </div>
-
-      <div>
-        <label htmlFor="phone" className="field-label">{ar.auth.phone}</label>
-        <input id="phone" name="phone" type="tel" dir="ltr" autoComplete="tel" className="field-input" />
-      </div>
-
-      <div>
-        <label htmlFor="preferred_contact" className="field-label">{ar.auth.preferredContact}</label>
-        <select id="preferred_contact" name="preferred_contact" required defaultValue="" className="field-input">
-          <option value="" disabled>{ar.auth.selectPlaceholder}</option>
-          {CONTACT_METHODS.map((m) => (
-            <option key={m} value={m}>{ar.auth.contactMethods[m]}</option>
-          ))}
-        </select>
+        <p className="mt-1 text-xs text-ink/60">{ar.auth.emailHint}</p>
       </div>
 
       <div>
@@ -50,6 +31,7 @@ export default function RegisterPage() {
             <option key={a} value={a}>{ar.auth.ageRanges[a]}</option>
           ))}
         </select>
+        <p className="mt-1 text-xs text-ink/60">{ar.auth.ageRangeHint}</p>
       </div>
 
       <div>
