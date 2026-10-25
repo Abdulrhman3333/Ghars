@@ -45,6 +45,7 @@ export async function register(_prev: ActionState, formData: FormData): Promise<
   });
 
   if (error) {
+    console.error('Registration failed', error);
     const alreadyRegistered = /already|registered/i.test(error.message);
     return { error: alreadyRegistered ? ar.auth.emailExists : ar.auth.genericError };
   }
