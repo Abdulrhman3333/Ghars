@@ -49,15 +49,20 @@ export async function register(_prev: ActionState, formData: FormData): Promise<
     return { error: alreadyRegistered ? ar.auth.emailExists : ar.auth.genericError };
   }
 
-  // email confirmation is automatic (trigger `auto_confirm_signup`): sign in right away
+  // The normal signup response includes a session. If the project still requires
+  // email confirmation, try signing in once more so local and hosted settings
+  // behave consistently.
   if (!data.session) {
     const { error: loginError } = await supabase.auth.signInWithPassword({
       email: v.email,
       password: v.password,
     });
-    if (!loginError) redirect('/home');
-    return { success: ar.auth.registerSent };
+    if (loginError) {
+      console.error('Registration created an account but automatic sign-in failed', loginError);
+      return { error: ar.auth.genericError };
+    }
   }
+
   redirect('/home');
 }
 
